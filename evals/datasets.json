@@ -1,0 +1,119 @@
+{
+  "version": "1.0",
+  "sources": [
+    {
+      "id": "mucs_hinglish",
+      "name": "MUCS Hinglish",
+      "platform": "huggingface",
+      "url": "https://huggingface.co/datasets/dianavdavidson/MUCS-Hinglish",
+      "license": "CC-BY-4.0",
+      "purpose": ["stt"],
+      "indian_context": true,
+      "real_world_data": true,
+      "access": "public",
+      "status": "ready",
+      "limitations": [
+        "Technical tutorial speech, not meetings",
+        "Mostly Hindi-English code switching",
+        "No overlapping speakers or action-item labels"
+      ]
+    },
+    {
+      "id": "kathbath",
+      "name": "Kathbath",
+      "platform": "huggingface",
+      "url": "https://huggingface.co/datasets/ai4bharat/Kathbath",
+      "license": "CC-BY-4.0 dataset metadata; verify raw-text terms per card",
+      "purpose": ["stt"],
+      "indian_context": true,
+      "real_world_data": true,
+      "access": "gated",
+      "status": "blocked",
+      "limitations": [
+        "Requires Hugging Face access acceptance",
+        "Read speech rather than meetings",
+        "Full dataset is too large for this local benchmark"
+      ]
+    },
+    {
+      "id": "lahaja",
+      "name": "LAHAJA",
+      "platform": "huggingface",
+      "url": "https://huggingface.co/datasets/ai4bharat/Lahaja",
+      "license": "Gated; terms must be accepted before use",
+      "purpose": ["stt"],
+      "indian_context": true,
+      "real_world_data": true,
+      "access": "gated",
+      "status": "blocked",
+      "limitations": [
+        "Requires Hugging Face token and access acceptance",
+        "Hindi accent benchmark, not meeting understanding"
+      ]
+    },
+    {
+      "id": "ami",
+      "name": "AMI Meeting Corpus",
+      "platform": "github",
+      "url": "https://groups.inf.ed.ac.uk/ami/corpus/",
+      "license": "CC-BY-4.0",
+      "purpose": ["stt", "extraction", "end_to_end"],
+      "indian_context": false,
+      "real_world_data": true,
+      "access": "public",
+      "status": "secondary",
+      "limitations": [
+        "Not Indian language or accent focused",
+        "Many meetings are scenario based"
+      ]
+    },
+    {
+      "id": "qmsum",
+      "name": "QMSum",
+      "platform": "github",
+      "url": "https://github.com/Yale-LILY/QMSum",
+      "license": "MIT",
+      "purpose": ["extraction"],
+      "indian_context": false,
+      "real_world_data": true,
+      "access": "public",
+      "status": "secondary",
+      "limitations": [
+        "Summarization labels do not directly map to CallRhino's decision schema",
+        "Not Indian language or accent focused"
+      ]
+    },
+    {
+      "id": "kaggle_teams_transcripts",
+      "name": "Teams Meeting Transcripts",
+      "platform": "kaggle",
+      "url": "https://www.kaggle.com/datasets/yusufayta/teams-meeting-transcripts",
+      "license": "MIT",
+      "purpose": ["extraction"],
+      "indian_context": false,
+      "real_world_data": false,
+      "access": "public",
+      "status": "secondary",
+      "limitations": [
+        "Synthetic snippets rather than full real meetings",
+        "Turkish and English, not Indian code mixing"
+      ]
+    },
+    {
+      "id": "callrhino_indian_stress_v1",
+      "name": "CallRhino Indian Meeting Stress Cases v1",
+      "platform": "local",
+      "url": "evals/cases/indian_meetings.json",
+      "license": "Project test fixture",
+      "purpose": ["extraction", "end_to_end"],
+      "indian_context": true,
+      "real_world_data": false,
+      "access": "local",
+      "status": "ready",
+      "limitations": [
+        "Synthetic and cannot establish production accuracy",
+        "Used only for deterministic edge-case regression"
+      ]
+    }
+  ]
+}

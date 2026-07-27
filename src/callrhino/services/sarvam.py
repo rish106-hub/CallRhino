@@ -18,6 +18,10 @@ class SarvamConfigurationError(SarvamError):
 class SarvamResponseError(SarvamError):
     """Raised when Sarvam returns an unusable response."""
 
+    def __init__(self, message: str, usage: "TokenUsage | None" = None) -> None:
+        super().__init__(message)
+        self.usage = usage or TokenUsage()
+
 
 @dataclass(frozen=True)
 class TokenUsage:
@@ -101,20 +105,24 @@ class SarvamChatClient:
             raise SarvamError("Could not reach Sarvam. Check the network and retry.") from exc
 
         body = response.json()
-        try:
-            content = body["choices"][0]["message"]["content"]
-            if not isinstance(content, str) or not content.strip():
-                raise KeyError("empty message content")
-            data = json.loads(content)
-        except (KeyError, IndexError, TypeError, json.JSONDecodeError) as exc:
-            raise SarvamResponseError("Sarvam returned an invalid structured response.") from exc
-
         raw_usage = body.get("usage") or {}
         usage = TokenUsage(
             prompt_tokens=int(raw_usage.get("prompt_tokens") or 0),
             completion_tokens=int(raw_usage.get("completion_tokens") or 0),
             total_tokens=int(raw_usage.get("total_tokens") or 0),
         )
+        try:
+            content = body["choices"][0]["message"]["content"]
+            if not isinstance(content, str) or not content.strip():
+                raise KeyError("empty message content")
+            data = json.loads(content)
+        except (KeyError, IndexError, TypeError, json.JSONDecodeError) as exc:
+            finish_reason = _finish_reason(body)
+            raise SarvamResponseError(
+                f"Sarvam returned an invalid structured response "
+                f"(finish_reason={finish_reason}).",
+                usage=usage,
+            ) from exc
         return StructuredChatResult(
             content=content,
             data=data,
@@ -137,3 +145,9 @@ def _extract_error_detail(response: httpx.Response) -> str:
         return str(body.get("message") or body.get("detail") or body)[:300]
     return str(body)[:300]
 
+
+def _finish_reason(body: dict[str, Any]) -> str:
+    try:
+        return str(body["choices"][0].get("finish_reason") or "unknown")
+    except (KeyError, IndexError, TypeError):
+        return "unknown"

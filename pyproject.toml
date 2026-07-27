@@ -24,6 +24,11 @@ dev = [
   "respx>=0.22.0,<0.23",
   "ruff>=0.12.5,<0.13",
 ]
+eval = [
+  "imageio-ffmpeg>=0.6,<1",
+  "mlx-lm>=0.28,<1",
+  "mlx-whisper>=0.4,<1",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/callrhino"]
@@ -38,4 +43,3 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
-

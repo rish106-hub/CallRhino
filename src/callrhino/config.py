@@ -17,12 +17,22 @@ class Settings(BaseSettings):
     )
 
     sarvam_api_key: str | None = Field(default=None, alias="SARVAM_API_KEY")
-    sarvam_chat_model: str = Field(default="sarvam-30b", alias="SARVAM_CHAT_MODEL")
+    sarvam_chat_model: str = Field(default="sarvam-105b", alias="SARVAM_CHAT_MODEL")
     sarvam_base_url: str = Field(
         default="https://api.sarvam.ai",
         alias="SARVAM_BASE_URL",
     )
     sarvam_timeout_seconds: float = Field(default=90, alias="SARVAM_TIMEOUT_SECONDS")
+    sarvam_batch_poll_seconds: float = Field(
+        default=5,
+        gt=0,
+        alias="SARVAM_BATCH_POLL_SECONDS",
+    )
+    sarvam_batch_timeout_seconds: float = Field(
+        default=1800,
+        gt=0,
+        alias="SARVAM_BATCH_TIMEOUT_SECONDS",
+    )
 
     openai_api_key: str | None = Field(default=None, alias="OPENAI_API_KEY")
     openai_model: str = Field(default="gpt-5.4-nano", alias="OPENAI_MODEL")

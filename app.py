@@ -1,5 +1,6 @@
 from datetime import date
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 import streamlit as st
 
@@ -10,6 +11,7 @@ from callrhino.repositories.sqlite import SQLiteMeetingRepository
 from callrhino.services.exports import brief_to_json, brief_to_markdown
 from callrhino.services.extraction import BriefValidationError, MeetingExtractor
 from callrhino.services.sarvam import SarvamChatClient, SarvamError
+from callrhino.services.speech import SarvamSpeechClient
 from callrhino.ui.components import render_page_intro, render_review_form
 from callrhino.ui.styles import apply_styles
 
@@ -69,12 +71,16 @@ def load_sample() -> str:
     return sample_path.read_text(encoding="utf-8") if sample_path.exists() else ""
 
 
+MAX_AUDIO_BYTES = 200 * 1024 * 1024
+AUDIO_TYPES = ["mp3", "wav", "m4a", "aac", "flac", "ogg", "webm", "mp4"]
+
+
 def render_new_meeting(repository: SQLiteMeetingRepository) -> None:
     render_page_intro(
         "01 / Process",
         "Turn talk into a record.",
-        "Paste a meeting transcript. CallRhino finds decisions, actions, missing owners, "
-        "deadlines, and unresolved questions. You approve the result before it is saved.",
+        "Paste a transcript or upload meeting audio. CallRhino finds decisions, actions, "
+        "missing owners, deadlines, and unresolved questions. You approve before saving.",
     )
 
     if "draft_brief" in st.session_state:
@@ -101,17 +107,42 @@ def render_new_meeting(repository: SQLiteMeetingRepository) -> None:
         with top_right:
             meeting_date = st.date_input("Meeting date", value=date.today())
 
-        transcript_input = st.text_area(
-            "Transcript",
-            key="transcript_input",
-            height=390,
-            placeholder="Aditi: We need to move the launch...\nRohan: I can own the migration.",
+        input_source = st.radio(
+            "Input source",
+            ["Transcript", "Meeting audio"],
+            horizontal=True,
         )
-        transcript_file = st.file_uploader(
-            "Or upload a transcript",
-            type=["txt", "md"],
-            help="UTF-8 text and Markdown files are supported.",
-        )
+        transcript_input = ""
+        transcript_file = None
+        audio_file = None
+        if input_source == "Transcript":
+            transcript_input = st.text_area(
+                "Transcript",
+                key="transcript_input",
+                height=390,
+                placeholder=(
+                    "Aditi: We need to move the launch...\n"
+                    "Rohan: I can own the migration."
+                ),
+            )
+            transcript_file = st.file_uploader(
+                "Or upload a transcript",
+                type=["txt", "md"],
+                help="UTF-8 text and Markdown files are supported.",
+            )
+        else:
+            audio_file = st.file_uploader(
+                "Meeting audio",
+                type=AUDIO_TYPES,
+                help=(
+                    "CallRhino uses Sarvam Saaras v3 code-mix transcription with "
+                    "speaker diarization. Maximum local upload: 200 MB."
+                ),
+            )
+            st.caption(
+                "Audio is sent to Sarvam for transcription and deleted from the "
+                "local temporary folder immediately after processing."
+            )
         submitted = st.form_submit_button(
             "Create meeting brief",
             type="primary",
@@ -123,14 +154,39 @@ def render_new_meeting(repository: SQLiteMeetingRepository) -> None:
     if not series_name.strip() or not meeting_title.strip():
         st.error("Add a meeting series and title.")
         return
+    source_type = "pasted"
     try:
-        transcript = (
-            transcript_file.getvalue().decode("utf-8")
-            if transcript_file is not None
-            else transcript_input
-        )
+        if input_source == "Meeting audio":
+            if audio_file is None:
+                st.error("Upload a meeting audio file.")
+                return
+            if audio_file.size > MAX_AUDIO_BYTES:
+                st.error("The audio file is larger than the 200 MB local limit.")
+                return
+            settings = get_settings()
+            safe_name = Path(audio_file.name).name
+            with (
+                st.spinner("Transcribing code-mixed audio and separating speakers..."),
+                TemporaryDirectory(prefix="callrhino-") as temporary_directory,
+                SarvamSpeechClient(settings) as speech_client,
+            ):
+                audio_path = Path(temporary_directory) / safe_name
+                audio_path.write_bytes(audio_file.getvalue())
+                transcription = speech_client.transcribe_meeting(audio_path)
+            transcript = transcription.transcript
+            source_type = "audio"
+        else:
+            transcript = (
+                transcript_file.getvalue().decode("utf-8")
+                if transcript_file is not None
+                else transcript_input
+            )
+            source_type = "text_file" if transcript_file is not None else "pasted"
     except UnicodeDecodeError:
         st.error("The uploaded transcript must be a UTF-8 text file.")
+        return
+    except SarvamError as exc:
+        st.error(str(exc))
         return
     if len(transcript.strip()) < 80:
         st.error("The transcript is too short to process.")
@@ -160,7 +216,7 @@ def render_new_meeting(repository: SQLiteMeetingRepository) -> None:
         "meeting_title": meeting_title.strip(),
         "meeting_date": meeting_date,
         "transcript": transcript,
-        "source_type": "text_file" if transcript_file is not None else "pasted",
+        "source_type": source_type,
         "model": result.model,
         "tokens": result.usage.total_tokens,
         "repaired": result.repaired,
@@ -267,8 +323,9 @@ def render_register(repository: SQLiteMeetingRepository) -> None:
         {
             "Meeting": meeting.title,
             "Decision": item.text,
-            "Owner": item.owner_text or "Unassigned",
-            "Confidence": f"{item.confidence:.0%}",
+            "Decision maker": item.decision_maker_text or "Unassigned",
+            "Status": item.status.value.title(),
+            "Evidence": item.evidence_strength.value.replace("_", " ").title(),
         }
         for meeting in meetings
         for item in meeting.brief.decisions

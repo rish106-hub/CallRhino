@@ -23,7 +23,8 @@ def brief_to_markdown(brief: MeetingBrief, *, title: str, series_name: str) -> s
     lines.extend(
         _numbered_lines(
             [
-                f"{item.text}{_owner_suffix(item.owner_text)} "
+                f"{item.text}{_decision_maker_suffix(item.decision_maker_text)} "
+                f"| Status: {item.status.value} "
                 f"`Evidence: {', '.join(item.evidence_segment_ids)}`"
                 for item in brief.decisions
             ]
@@ -52,6 +53,14 @@ def _owner_suffix(owner: str | None) -> str:
     return f" | Owner: {owner}" if owner else " | Owner: unassigned"
 
 
+def _decision_maker_suffix(decision_maker: str | None) -> str:
+    return (
+        f" | Decision maker: {decision_maker}"
+        if decision_maker
+        else " | Decision maker: unassigned"
+    )
+
+
 def _deadline_suffix(due_text: str | None, due_date: object | None) -> str:
     value = due_text or (str(due_date) if due_date else None)
     return f" | Due: {value}" if value else " | Due: not set"
@@ -69,4 +78,3 @@ def _checkbox_lines(items: list[str]) -> list[str]:
 
 def _bullet_lines(items: list[str]) -> list[str]:
     return [f"- {item}" for item in items] or ["None recorded."]
-

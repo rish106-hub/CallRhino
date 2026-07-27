@@ -16,7 +16,7 @@ def test_sends_documented_structured_output_contract(valid_brief_data: dict) -> 
             200,
             json={
                 "id": "chatcmpl_test",
-                "model": "sarvam-30b",
+                "model": "sarvam-105b",
                 "choices": [
                     {
                         "message": {
@@ -46,7 +46,7 @@ def test_sends_documented_structured_output_contract(valid_brief_data: dict) -> 
 
     body = captured["body"]
     assert captured["headers"]["api-subscription-key"] == "test_key"
-    assert body["model"] == "sarvam-30b"
+    assert body["model"] == "sarvam-105b"
     assert body["temperature"] == 0
     assert body["reasoning_effort"] is None
     assert body["n"] == 1

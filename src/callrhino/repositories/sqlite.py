@@ -6,7 +6,7 @@ from uuid import uuid4
 
 from callrhino.domain.models import ApprovedMeeting, MeetingBrief, TranscriptSegment
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 class SQLiteMeetingRepository:
@@ -142,4 +142,3 @@ class SQLiteMeetingRepository:
                 "SELECT name FROM meeting_series ORDER BY name COLLATE NOCASE"
             ).fetchall()
         return [str(row["name"]) for row in rows]
-

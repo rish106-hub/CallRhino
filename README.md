@@ -10,19 +10,21 @@ reviewed before it enters the meeting-series register.
 
 The first vertical slice includes:
 
-- pasted and text-file transcripts
+- pasted, text-file, and long-form audio inputs
+- Sarvam Saaras v3 code-mix transcription with speaker diarization
 - speaker-aware transcript segmentation
 - Sarvam Chat Completions with strict JSON Schema output
 - evidence validation against stable transcript segment IDs
+- explicit decision, commitment, ownership, and deadline provenance
 - one repair attempt for invalid model output
 - an editable approval workflow
 - Markdown and JSON exports
 - a local SQLite meeting register
 - a prepared Supabase schema with Row Level Security
 
-Audio transcription and cross-meeting reconciliation are the next product
-increments. The application boundaries for both are already separate from the
-core extraction flow.
+Raw audio is held only in a local temporary folder while Sarvam processes it.
+The application persists the transcript, not the audio file. Cross-meeting
+reconciliation remains a later increment.
 
 ## Run locally
 
@@ -51,7 +53,7 @@ before this flag is enabled.
 Install and start:
 
 ```bash
-uv sync --all-groups
+uv sync
 uv run streamlit run app.py
 ```
 
@@ -98,7 +100,7 @@ POST https://api.sarvam.ai/v1/chat/completions
 
 The request sets:
 
-- model: `sarvam-30b`
+- model: `sarvam-105b`
 - temperature: `0`
 - reasoning effort: disabled
 - one completion
@@ -106,14 +108,58 @@ The request sets:
 - `response_format.type`: `json_schema`
 - `strict`: `true`
 
+The canonical extraction contract is documented in
+[`docs/extraction-contract-v2.md`](docs/extraction-contract-v2.md). Audience
+views are rendered from the approved canonical record and do not run separate
+fact extraction prompts.
+
 The returned `message.content` is parsed as JSON and then validated again with
 Pydantic. Evidence IDs are checked against the submitted transcript segments.
+Mechanical warning fields and supported date phrases are normalized locally
+before validation, which avoids paying for repairs that do not need model judgment.
+
+Long-form audio uses Sarvam's Batch Speech-to-Text API with `saaras:v3`,
+`codemix`, timestamps, and speaker diarization. The batch path supports meetings
+up to two hours according to Sarvam's documentation.
+
+The 105B model is intentional. In the July 2026 benchmark, Sarvam 30B exhausted
+the 4,096-token output limit on tiny meetings and returned truncated JSON.
+Sarvam 105B passed all eight schemas in one run, then passed seven of eight in a
+repeat because one response hit the same output limit. Observed extraction cost
+was roughly ₹0.013 to ₹0.021 per short test meeting. The variance is why every
+brief remains a reviewable draft.
 
 References:
 
 - [Chat Completions API](https://docs.sarvam.ai/api-reference/chat/chat-completions)
 - [Structured output guide](https://docs.sarvam.ai/api/api-guides-tutorials/chat-completion/overview#structured-outputs-json)
 - [Speech-to-text API selection](https://docs.sarvam.ai/api/api-guides-tutorials/speech-to-text/which-api-to-use)
+- [Batch Speech-to-Text API](https://docs.sarvam.ai/api/api-guides-tutorials/speech-to-text/batch-api)
+
+## Evaluation
+
+The benchmark is separate from the product runtime. It includes:
+
+- public MUCS-Hinglish speech samples from Hugging Face
+- a secondary synthetic Kaggle action/decision classifier set
+- eight Indian meeting edge cases for deterministic extraction regression
+- local MLX Whisper baselines
+- capped Sarvam STT and extraction runs
+- a public-audio end-to-end negative control
+
+Run the free checks:
+
+```bash
+uv sync --group eval
+uv run ruff check .
+uv run pytest
+uv run python scripts/prepare_hf_stt_eval.py
+uv run python scripts/prepare_kaggle_eval.py
+```
+
+Provider benchmark scripts require an explicit `--max-cost-inr` argument and
+refuse calls above that ceiling. See [`evals/README.md`](evals/README.md) and the
+current [benchmark report](docs/benchmark-results-2026-07-27.md).
 
 ## Supabase
 
@@ -148,4 +194,4 @@ will use a publishable key plus an authenticated user session.
 - Cite evidence for every extracted item.
 - Treat model output as a draft.
 - Compare meetings only inside one recurring series by default.
-- Delete raw audio after transcription when audio support is added.
+- Delete raw audio immediately after transcription.

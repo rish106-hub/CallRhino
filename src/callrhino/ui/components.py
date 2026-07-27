@@ -6,11 +6,15 @@ import streamlit as st
 from callrhino.domain.models import (
     ActionItem,
     Decision,
+    DecisionMakerBasis,
     MeetingBrief,
     OpenQuestion,
+    OwnerBasis,
     Priority,
     Risk,
+    TemporalPrecision,
     TranscriptSegment,
+    WarningCode,
 )
 
 
@@ -71,20 +75,29 @@ def render_review_form(
                     height=80,
                 )
                 owner = st.text_input(
-                    "Owner",
-                    value=item.owner_text or "",
+                    "Decision maker",
+                    value=item.decision_maker_text or "",
                     key=f"decision_owner_{index}",
-                    placeholder="Leave blank when no owner was stated",
+                    placeholder="Leave blank when no decision maker was stated",
                 )
-                st.caption(f"Confidence {item.confidence:.0%}")
+                st.caption(
+                    f"Status: {item.status.value.replace('_', ' ').title()} | "
+                    f"Evidence: {item.evidence_strength.value.replace('_', ' ').title()}"
+                )
                 with st.expander("View transcript evidence"):
                     render_evidence(item.evidence_segment_ids, segment_lookup)
                 if include:
+                    decision_maker = owner.strip() or None
                     decisions.append(
                         item.model_copy(
                             update={
                                 "text": text.strip(),
-                                "owner_text": owner.strip() or None,
+                                "decision_maker_text": decision_maker,
+                                "decision_maker_basis": (
+                                    DecisionMakerBasis.REVIEWER_CONFIRMED
+                                    if decision_maker
+                                    else DecisionMakerBasis.UNASSIGNED
+                                ),
                             }
                         )
                     )
@@ -131,17 +144,46 @@ def render_review_form(
                         format_func=lambda value: value.value.title(),
                         key=f"action_priority_{index}",
                     )
-                st.caption(f"Confidence {item.confidence:.0%}")
+                st.caption(
+                    f"Commitment: {item.commitment_status.value.replace('_', ' ').title()} | "
+                    f"Owner basis: {item.owner_basis.value.replace('_', ' ').title()} | "
+                    f"Evidence: {item.evidence_strength.value.replace('_', ' ').title()}"
+                )
                 with st.expander("View transcript evidence"):
                     render_evidence(item.evidence_segment_ids, segment_lookup)
                 if include:
+                    approved_owner = owner.strip() or None
+                    approved_due_date = (
+                        due_value if isinstance(due_value, date) else None
+                    )
+                    approved_due_text = due_text.strip() or None
+                    deadline_precision = _reviewed_deadline_precision(
+                        approved_due_date,
+                        approved_due_text,
+                    )
                     action_items.append(
                         item.model_copy(
                             update={
                                 "task": task.strip(),
-                                "owner_text": owner.strip() or None,
-                                "due_date": due_value if isinstance(due_value, date) else None,
-                                "due_text": due_text.strip() or None,
+                                "owner_text": approved_owner,
+                                "owner_basis": (
+                                    OwnerBasis.REVIEWER_CONFIRMED
+                                    if approved_owner
+                                    else OwnerBasis.UNASSIGNED
+                                ),
+                                "suggested_owner_text": (
+                                    item.suggested_owner_text
+                                    if approved_owner is None
+                                    else None
+                                ),
+                                "due_date": approved_due_date,
+                                "due_text": approved_due_text,
+                                "deadline_precision": deadline_precision,
+                                "warnings": _reviewed_action_warnings(
+                                    item,
+                                    owner=approved_owner,
+                                    deadline_precision=deadline_precision,
+                                ),
                                 "priority": priority,
                             }
                         )
@@ -192,7 +234,7 @@ def render_review_form(
     if not approved:
         return None
 
-    return brief.model_copy(
+    reviewed = brief.model_copy(
         update={
             "summary": brief.summary.model_copy(update={"short": summary_text.strip()}),
             "decisions": decisions,
@@ -201,3 +243,41 @@ def render_review_form(
             "risks": risks,
         }
     )
+    return MeetingBrief.model_validate(reviewed.model_dump(mode="python"))
+
+
+def _reviewed_deadline_precision(
+    due_date: date | None,
+    due_text: str | None,
+) -> TemporalPrecision:
+    if due_date and due_text:
+        return TemporalPrecision.RESOLVED_RELATIVE
+    if due_date:
+        return TemporalPrecision.EXACT
+    if due_text:
+        return TemporalPrecision.VAGUE
+    return TemporalPrecision.ABSENT
+
+
+def _reviewed_action_warnings(
+    item: ActionItem,
+    *,
+    owner: str | None,
+    deadline_precision: TemporalPrecision,
+) -> list[WarningCode]:
+    managed = {
+        WarningCode.MISSING_OWNER,
+        WarningCode.MISSING_DEADLINE,
+        WarningCode.VAGUE_DEADLINE,
+        WarningCode.UNACCEPTED_ASSIGNMENT,
+    }
+    warnings = {warning for warning in item.warnings if warning not in managed}
+    if owner is None:
+        warnings.add(WarningCode.MISSING_OWNER)
+        if item.suggested_owner_text:
+            warnings.add(WarningCode.UNACCEPTED_ASSIGNMENT)
+    if deadline_precision == TemporalPrecision.VAGUE:
+        warnings.add(WarningCode.VAGUE_DEADLINE)
+    elif deadline_precision == TemporalPrecision.ABSENT:
+        warnings.add(WarningCode.MISSING_DEADLINE)
+    return sorted(warnings, key=lambda warning: warning.value)

@@ -11,4 +11,6 @@ htmlcov/
 data/*.db
 data/*.db-*
 data/uploads/
-
+evals/cache/
+evals/results/*.json
+evals/results/*.jsonl
