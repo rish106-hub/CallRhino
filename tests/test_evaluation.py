@@ -2,7 +2,10 @@ from pathlib import Path
 
 import pytest
 
-from callrhino.evaluation.extraction_metrics import score_extraction_case
+from callrhino.evaluation.extraction_metrics import (
+    score_extraction_case,
+    summarize_extraction,
+)
 from callrhino.evaluation.io import load_model
 from callrhino.evaluation.models import (
     BenchmarkManifest,
@@ -86,6 +89,15 @@ def test_extraction_score_penalizes_hallucinated_action() -> None:
     assert score.action_precision == 0
     assert score.action_recall == 1
     assert score.forbidden_fact_count == 1
+    assert score.expected_action_count == 0
+    assert score.predicted_action_count == 1
+    assert score.matched_action_count == 0
+
+    summary = summarize_extraction([score])
+    action_precision = summary["micro_metrics"]["action_precision"]
+    assert action_precision == {"correct": 0, "total": 1, "value": 0.0}
+    action_recall = summary["micro_metrics"]["action_recall"]
+    assert action_recall == {"correct": 0, "total": 0, "value": None}
 
 
 def test_extraction_score_uses_evidence_to_match_valid_paraphrases() -> None:

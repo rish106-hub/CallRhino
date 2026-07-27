@@ -23,6 +23,22 @@ class ExtractionCaseScore:
     forbidden_fact_count: int
     estimated_cost_inr: float
     latency_seconds: float
+    expected_decision_count: int
+    predicted_decision_count: int
+    matched_decision_count: int
+    expected_action_count: int
+    predicted_action_count: int
+    matched_action_count: int
+    owner_correct_count: int
+    owner_check_count: int
+    classification_correct_count: int
+    classification_check_count: int
+    decision_date_correct_count: int
+    decision_date_check_count: int
+    deadline_correct_count: int
+    deadline_check_count: int
+    evidence_correct_count: int
+    evidence_check_count: int
 
 
 def score_extraction_case(
@@ -48,6 +64,23 @@ def score_extraction_case(
             forbidden_fact_count=0,
             estimated_cost_inr=prediction.estimated_cost_inr,
             latency_seconds=prediction.latency_seconds,
+            expected_decision_count=len(case.expected_decisions),
+            predicted_decision_count=len(actual_decisions),
+            matched_decision_count=0,
+            expected_action_count=len(case.expected_actions),
+            predicted_action_count=len(actual_actions),
+            matched_action_count=0,
+            owner_correct_count=0,
+            owner_check_count=len(case.expected_decisions) + len(case.expected_actions),
+            classification_correct_count=0,
+            classification_check_count=len(case.expected_decisions)
+            + len(case.expected_actions),
+            decision_date_correct_count=0,
+            decision_date_check_count=len(case.expected_decisions),
+            deadline_correct_count=0,
+            deadline_check_count=len(case.expected_actions),
+            evidence_correct_count=0,
+            evidence_check_count=len(case.expected_decisions) + len(case.expected_actions),
         )
 
     decision_matches = _greedy_matches(
@@ -147,6 +180,22 @@ def score_extraction_case(
         forbidden_fact_count=forbidden_count,
         estimated_cost_inr=prediction.estimated_cost_inr,
         latency_seconds=prediction.latency_seconds,
+        expected_decision_count=len(case.expected_decisions),
+        predicted_decision_count=len(actual_decisions),
+        matched_decision_count=len(decision_matches),
+        expected_action_count=len(case.expected_actions),
+        predicted_action_count=len(actual_actions),
+        matched_action_count=len(action_matches),
+        owner_correct_count=sum(owner_checks),
+        owner_check_count=len(owner_checks),
+        classification_correct_count=sum(classification_checks),
+        classification_check_count=len(classification_checks),
+        decision_date_correct_count=sum(decision_date_checks),
+        decision_date_check_count=len(decision_date_checks),
+        deadline_correct_count=sum(deadline_checks),
+        deadline_check_count=len(deadline_checks),
+        evidence_correct_count=sum(evidence_checks),
+        evidence_check_count=len(evidence_checks),
     )
 
 
@@ -173,8 +222,39 @@ def summarize_extraction(scores: list[ExtractionCaseScore]) -> dict[str, Any]:
     }
     for field in numeric_fields:
         summary[f"mean_{field}"] = sum(getattr(score, field) for score in scores) / len(scores)
+    summary["micro_metrics"] = _micro_metrics(scores)
     summary["cases"] = [asdict(score) for score in scores]
     return summary
+
+
+def _micro_metrics(scores: list[ExtractionCaseScore]) -> dict[str, dict[str, int | float | None]]:
+    specifications = {
+        "decision_precision": ("matched_decision_count", "predicted_decision_count"),
+        "decision_recall": ("matched_decision_count", "expected_decision_count"),
+        "action_precision": ("matched_action_count", "predicted_action_count"),
+        "action_recall": ("matched_action_count", "expected_action_count"),
+        "owner_accuracy": ("owner_correct_count", "owner_check_count"),
+        "classification_accuracy": (
+            "classification_correct_count",
+            "classification_check_count",
+        ),
+        "decision_date_accuracy": (
+            "decision_date_correct_count",
+            "decision_date_check_count",
+        ),
+        "deadline_accuracy": ("deadline_correct_count", "deadline_check_count"),
+        "evidence_accuracy": ("evidence_correct_count", "evidence_check_count"),
+    }
+    metrics: dict[str, dict[str, int | float | None]] = {}
+    for name, (numerator_field, denominator_field) in specifications.items():
+        correct = sum(getattr(score, numerator_field) for score in scores)
+        total = sum(getattr(score, denominator_field) for score in scores)
+        metrics[name] = {
+            "correct": correct,
+            "total": total,
+            "value": correct / total if total else None,
+        }
+    return metrics
 
 
 def _greedy_matches(

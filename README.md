@@ -203,7 +203,9 @@ Provider benchmark scripts require an explicit `--max-cost-inr` argument and
 refuse calls above that ceiling. See [`evals/README.md`](evals/README.md) and the
 current [benchmark report](docs/benchmark-results-2026-07-27.md). The data split,
 review, and 99.5% claim rules are defined in
-[`docs/evaluation-protocol.md`](docs/evaluation-protocol.md).
+[`docs/evaluation-protocol.md`](docs/evaluation-protocol.md). Executable
+sample-size and metric gates are documented in
+[`docs/release-gates.md`](docs/release-gates.md).
 
 ## Supabase
 
