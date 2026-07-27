@@ -67,6 +67,7 @@ uv run python scripts/evaluate_sarvam_stt.py \
   --output evals/results/stt_sarvam_saaras_v3_codemix.json
 
 uv run python scripts/evaluate_sarvam_extraction.py \
+  --strategy canonical \
   --model sarvam-105b \
   --max-cost-inr 1.5 \
   --output evals/results/extraction_sarvam_105b.json
@@ -83,9 +84,28 @@ uv run python scripts/evaluate_end_to_end_negative.py \
 Audio cost uses Sarvam's per-second billing with each request rounded up to one
 second. Extraction cost includes every repair attempt.
 
-## Release gates
+To compare an experimental path, run the same extraction command with
+`--strategy canonical-gated` or `--strategy compact` and a different output
+file.
 
-The MVP should not be described as validated until all gates pass:
+## Data split checks
+
+Prompt and rule changes may use only the development set. The frozen holdout and
+private real-meeting set must remain independent.
+
+```bash
+uv run python scripts/validate_extraction_splits.py \
+  --development evals/cases/indian_meetings.json \
+  --holdout evals/cases/holdout.template.json
+```
+
+The validator rejects repeated case IDs and repeated transcript text across
+splits. See [`docs/evaluation-protocol.md`](../docs/evaluation-protocol.md) for
+the full review protocol.
+
+## Validation gates
+
+The current beta minimums remain useful for finding regressions:
 
 | Gate | Required |
 |---|---:|
@@ -99,4 +119,7 @@ The MVP should not be described as validated until all gates pass:
 | Positive end-to-end real meeting cases | required |
 | Human review | at least 20 consented Indian meetings |
 
-The current benchmark does not pass these release gates.
+These beta minimums do not justify a 99.5% accuracy claim. That claim requires
+every critical field metric to reach at least 99.5% on an independent frozen
+holdout and a private consented real-meeting set, with 100% schema validity and
+zero unsupported facts. The current benchmark meets neither standard.

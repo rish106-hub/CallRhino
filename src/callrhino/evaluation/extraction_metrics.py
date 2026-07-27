@@ -53,10 +53,14 @@ def score_extraction_case(
     decision_matches = _greedy_matches(
         [item.text for item in case.expected_decisions],
         [str(item.get("text", "")) for item in actual_decisions],
+        [item.evidence_segment_ids for item in case.expected_decisions],
+        [list(item.get("evidence_segment_ids", [])) for item in actual_decisions],
     )
     action_matches = _greedy_matches(
         [item.task for item in case.expected_actions],
         [str(item.get("task", "")) for item in actual_actions],
+        [item.evidence_segment_ids for item in case.expected_actions],
+        [list(item.get("evidence_segment_ids", [])) for item in actual_actions],
     )
 
     decision_match_map = {expected: actual for expected, actual, _ in decision_matches}
@@ -176,9 +180,20 @@ def summarize_extraction(scores: list[ExtractionCaseScore]) -> dict[str, Any]:
 def _greedy_matches(
     expected: list[str],
     actual: list[str],
+    expected_evidence: list[list[str]],
+    actual_evidence: list[list[str]],
 ) -> list[tuple[int, int, float]]:
     candidates = [
-        (expected_index, actual_index, token_f1(expected_text, actual_text))
+        (
+            expected_index,
+            actual_index,
+            _item_match_score(
+                expected_text,
+                actual_text,
+                expected_evidence[expected_index],
+                actual_evidence[actual_index],
+            ),
+        )
         for expected_index, expected_text in enumerate(expected)
         for actual_index, actual_text in enumerate(actual)
     ]
@@ -198,6 +213,25 @@ def _greedy_matches(
         used_expected.add(expected_index)
         used_actual.add(actual_index)
     return matches
+
+
+def _item_match_score(
+    expected_text: str,
+    actual_text: str,
+    expected_evidence: list[str],
+    actual_evidence: list[str],
+) -> float:
+    text_score = token_f1(expected_text, actual_text)
+    if text_score < 0.15:
+        return text_score
+
+    expected_ids = set(expected_evidence)
+    actual_ids = set(actual_evidence)
+    if not expected_ids or not actual_ids:
+        return text_score
+
+    overlap = len(expected_ids & actual_ids) / min(len(expected_ids), len(actual_ids))
+    return max(text_score, (text_score + overlap) / 2)
 
 
 def _ratio(numerator: int, denominator: int) -> float:

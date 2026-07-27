@@ -49,7 +49,7 @@ def test_sends_documented_structured_output_contract(valid_brief_data: dict) -> 
     assert body["model"] == "sarvam-105b"
     assert body["temperature"] == 0
     assert body["reasoning_effort"] is None
-    assert body["max_tokens"] == 2048
+    assert body["max_tokens"] == 4096
     assert body["n"] == 1
     assert body["response_format"]["type"] == "json_schema"
     assert body["response_format"]["json_schema"]["strict"] is True

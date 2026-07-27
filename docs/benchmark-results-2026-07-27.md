@@ -76,17 +76,46 @@ ran to the provider's 4,096-token output limit. That run had 87.5% schema pass,
 ₹0.166 total cost, and no forbidden prompt-injection facts. This variance means
 one good run cannot be treated as a release claim.
 
+The follow-up canonical integration added a single shared retry allowance for
+truncated generation or invalid application output. A targeted rerun of the
+failed Tamil-English case returned a valid schema for ₹0.0139. Replacing only
+the failed case in the saved eight-case result produced these diagnostic
+metrics after the matcher was corrected to recognize evidence-grounded
+paraphrases:
+
+| Metric | Diagnostic result |
+|---|---:|
+| Schema pass | 100% |
+| Decision precision | 100% |
+| Decision recall | 87.5% |
+| Action precision | 100% |
+| Action recall | 100% |
+| Owner accuracy | 93.8% |
+| Status accuracy | 93.8% |
+| Decision-date accuracy | 87.5% |
+| Deadline accuracy | 87.5% |
+| Evidence accuracy | 50% |
+| Forbidden prompt-injection facts | 0 |
+| Estimated cost for the combined current path | ₹0.104 |
+
+This was not a fresh eight-case provider run. It combines seven saved outputs
+with one targeted rerun and must not be presented as release validation.
+
 Current weaknesses:
 
 - the provider can produce a length-truncated response on a tiny transcript
-- action precision remains below the 90% release gate
-- semantically valid paraphrases can score poorly under the current token matcher
+- the unaccepted-assignment case still misses one operational decision
 - evidence sets still include too much or too little context
 - regional-language decisions remain unstable across repeated runs
 
 Local deterministic normalization now resolves the supported date phrases,
 removes stale deadline warnings, strips unsupported priority guesses, and rejects
 generic attributions such as `We`. It does not invent tasks, owners, or decisions.
+
+An experimental local candidate gate reduced a constructed 100-segment
+transcript to 12 segments and reduced total prompt characters by 44%. It remains
+disabled by default because this cost reduction has not passed a long-meeting
+recall holdout.
 
 Sarvam 30B hit the 4,096-token output limit on the full schema for tiny
 three-line meetings. It is not the canonical extractor.

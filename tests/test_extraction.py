@@ -3,18 +3,24 @@ from copy import deepcopy
 from datetime import date
 
 from callrhino.domain.transcript import segment_transcript
-from callrhino.services.extraction import MeetingExtractor
-from callrhino.services.sarvam import StructuredChatResult, TokenUsage
+from callrhino.services.extraction import CompactMeetingExtractor, MeetingExtractor
+from callrhino.services.sarvam import (
+    SarvamResponseError,
+    StructuredChatResult,
+    TokenUsage,
+)
 
 
 class FakeGenerator:
-    def __init__(self, responses: list[dict]) -> None:
+    def __init__(self, responses: list[dict | Exception]) -> None:
         self.responses = responses
         self.calls: list[dict] = []
 
     def generate_structured(self, **kwargs: object) -> StructuredChatResult:
         self.calls.append(kwargs)
         data = self.responses.pop(0)
+        if isinstance(data, Exception):
+            raise data
         return StructuredChatResult(
             content=json.dumps(data),
             data=data,
@@ -35,7 +41,7 @@ def test_compiles_compact_extraction_into_canonical_brief(
 ) -> None:
     generator = FakeGenerator([valid_compact_data])
 
-    result = MeetingExtractor(generator).extract(
+    result = CompactMeetingExtractor(generator).extract(
         meeting_date=date(2026, 7, 27),
         series_name="Weekly Product Review",
         meeting_title="Launch review",
@@ -57,7 +63,7 @@ def test_repairs_unknown_evidence_once(valid_compact_data: dict) -> None:
     invalid["facts"][0]["evidence_segment_ids"] = ["seg_9999"]
     generator = FakeGenerator([invalid, valid_compact_data])
 
-    result = MeetingExtractor(generator).extract(
+    result = CompactMeetingExtractor(generator).extract(
         meeting_date=date(2026, 7, 27),
         series_name="Weekly Product Review",
         meeting_title="Launch review",
@@ -75,7 +81,7 @@ def test_repairs_incompatible_fact_state(valid_compact_data: dict) -> None:
     invalid["facts"][0]["state"] = "committed"
     generator = FakeGenerator([invalid, valid_compact_data])
 
-    result = MeetingExtractor(generator).extract(
+    result = CompactMeetingExtractor(generator).extract(
         meeting_date=date(2026, 7, 27),
         series_name="Weekly Product Review",
         meeting_title="Launch review",
@@ -103,7 +109,7 @@ def test_compiler_adds_missing_contract_fields_without_paid_repair(
     )
     generator = FakeGenerator([compact])
 
-    result = MeetingExtractor(generator).extract(
+    result = CompactMeetingExtractor(generator).extract(
         meeting_date=date(2026, 7, 27),
         series_name="Weekly Product Review",
         meeting_title="Launch review",
@@ -128,7 +134,7 @@ def test_generic_group_actor_fails_safe_without_repair(valid_compact_data: dict)
     compact["facts"][1]["actor_basis"] = "group_commitment"
     generator = FakeGenerator([compact])
 
-    result = MeetingExtractor(generator).extract(
+    result = CompactMeetingExtractor(generator).extract(
         meeting_date=date(2026, 7, 27),
         series_name="Weekly Product Review",
         meeting_title="Launch review",
@@ -143,3 +149,98 @@ def test_generic_group_actor_fails_safe_without_repair(valid_compact_data: dict)
         "MISSING_OWNER",
         "UNCLEAR_SPEAKER",
     }
+
+
+def test_canonical_extractor_is_the_product_default(valid_brief_data: dict) -> None:
+    generator = FakeGenerator([valid_brief_data])
+
+    result = MeetingExtractor(generator).extract(
+        meeting_date=date(2026, 7, 27),
+        series_name="Weekly Product Review",
+        meeting_title="Launch review",
+        segments=_segments(),
+    )
+
+    assert generator.calls[0]["schema_name"] == "meeting_brief"
+    assert result.brief.action_items[0].owner_text == "Rohan"
+    assert result.original_segment_count == 12
+    assert result.selected_segment_count == 12
+
+
+def test_canonical_extractor_keeps_long_transcripts_by_default(
+    valid_brief_data: dict,
+) -> None:
+    empty_brief = deepcopy(valid_brief_data)
+    empty_brief["decisions"] = []
+    empty_brief["action_items"] = []
+    empty_brief["open_questions"] = []
+    empty_brief["risks"] = []
+    empty_brief["warnings"] = []
+    lines = [f"Speaker: General discussion segment {index}." for index in range(30)]
+    lines[14] = "Rohan: I will send the final report by Friday."
+    generator = FakeGenerator([empty_brief])
+
+    result = MeetingExtractor(generator).extract(
+        meeting_date=date(2026, 7, 27),
+        series_name="Weekly Product Review",
+        meeting_title="Launch review",
+        segments=segment_transcript("\n".join(lines)),
+    )
+
+    prompt = generator.calls[0]["messages"][1]["content"]
+    assert result.original_segment_count == 30
+    assert result.selected_segment_count == 30
+    assert "[seg_0015]" in prompt
+    assert "[seg_0002]" in prompt
+
+
+def test_canonical_extractor_can_gate_long_transcripts(
+    valid_brief_data: dict,
+) -> None:
+    empty_brief = deepcopy(valid_brief_data)
+    empty_brief["decisions"] = []
+    empty_brief["action_items"] = []
+    empty_brief["open_questions"] = []
+    empty_brief["risks"] = []
+    empty_brief["warnings"] = []
+    lines = [f"Speaker: General discussion segment {index}." for index in range(30)]
+    lines[14] = "Rohan: I will send the final report by Friday."
+    generator = FakeGenerator([empty_brief])
+
+    result = MeetingExtractor(
+        generator,
+        candidate_gating_enabled=True,
+    ).extract(
+        meeting_date=date(2026, 7, 27),
+        series_name="Weekly Product Review",
+        meeting_title="Launch review",
+        segments=segment_transcript("\n".join(lines)),
+    )
+
+    prompt = generator.calls[0]["messages"][1]["content"]
+    assert result.original_segment_count == 30
+    assert result.selected_segment_count < 30
+    assert "[seg_0015]" in prompt
+    assert "[seg_0002]" not in prompt
+
+
+def test_canonical_extractor_retries_truncated_generation_once(
+    valid_brief_data: dict,
+) -> None:
+    truncated = SarvamResponseError(
+        "Sarvam returned an invalid structured response (finish_reason=length).",
+        usage=TokenUsage(prompt_tokens=100, completion_tokens=4096, total_tokens=4196),
+    )
+    generator = FakeGenerator([truncated, valid_brief_data])
+
+    result = MeetingExtractor(generator).extract(
+        meeting_date=date(2026, 7, 27),
+        series_name="Weekly Product Review",
+        meeting_title="Launch review",
+        segments=_segments(),
+    )
+
+    assert result.repaired is True
+    assert result.usage.total_tokens == 4346
+    assert len(generator.calls) == 2
+    assert "no repeated text" in generator.calls[1]["messages"][-1]["content"]

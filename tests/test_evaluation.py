@@ -88,6 +88,70 @@ def test_extraction_score_penalizes_hallucinated_action() -> None:
     assert score.forbidden_fact_count == 1
 
 
+def test_extraction_score_uses_evidence_to_match_valid_paraphrases() -> None:
+    cases = load_model(
+        Path("evals/cases/indian_meetings.json"),
+        ExtractionCaseManifest,
+    )
+    case = next(item for item in cases.cases if item.id == "tamil_english_code_mix")
+    prediction = ExtractionPrediction(
+        case_id=case.id,
+        provider="test",
+        model="test",
+        latency_seconds=0,
+        schema_valid=True,
+        brief={
+            "decisions": [
+                {
+                    "text": "Launch decision deferred pending crash logs",
+                    "status": "deferred",
+                    "decision_maker_text": "Karthik",
+                    "effective_date": None,
+                    "effective_date_text": None,
+                    "date_precision": "absent",
+                    "evidence_segment_ids": ["seg_0003"],
+                }
+            ],
+            "action_items": [],
+        },
+    )
+
+    score = score_extraction_case(case, prediction)
+
+    assert score.decision_precision == 1
+    assert score.decision_recall == 1
+    assert score.evidence_accuracy == 0
+
+
+def test_extraction_score_does_not_match_unrelated_text_from_same_segment() -> None:
+    cases = load_model(
+        Path("evals/cases/indian_meetings.json"),
+        ExtractionCaseManifest,
+    )
+    case = next(item for item in cases.cases if item.id == "tamil_english_code_mix")
+    prediction = ExtractionPrediction(
+        case_id=case.id,
+        provider="test",
+        model="test",
+        latency_seconds=0,
+        schema_valid=True,
+        brief={
+            "decisions": [
+                {
+                    "text": "Order lunch for the office",
+                    "evidence_segment_ids": ["seg_0003"],
+                }
+            ],
+            "action_items": [],
+        },
+    )
+
+    score = score_extraction_case(case, prediction)
+
+    assert score.decision_precision == 0
+    assert score.decision_recall == 0
+
+
 def test_word_error_rate_handles_empty_reference() -> None:
     assert word_error_rate("", "") == 0
     assert word_error_rate("", "hallucination") == 1

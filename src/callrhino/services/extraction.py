@@ -12,12 +12,23 @@ from callrhino.domain.models import (
     TranscriptSegment,
     WarningCode,
 )
+from callrhino.services.candidates import CandidateSelection, select_candidate_segments
 from callrhino.services.compact_prompts import (
     build_compact_extraction_messages,
     build_compact_repair_messages,
 )
 from callrhino.services.compiler import CompactCompilationError, compile_meeting_brief
-from callrhino.services.sarvam import StructuredChatResult, TokenUsage
+from callrhino.services.normalization import normalize_brief_payload
+from callrhino.services.prompts import (
+    build_extraction_messages,
+    build_generation_retry_messages,
+    build_repair_messages,
+)
+from callrhino.services.sarvam import (
+    SarvamResponseError,
+    StructuredChatResult,
+    TokenUsage,
+)
 
 
 class StructuredGenerator(Protocol):
@@ -45,9 +56,135 @@ class ExtractionResult:
     model: str
     request_id: str | None
     repaired: bool
+    original_segment_count: int
+    selected_segment_count: int
 
 
 class MeetingExtractor:
+    """Accuracy-first canonical extractor with local long-transcript gating."""
+
+    def __init__(
+        self,
+        generator: StructuredGenerator,
+        max_repairs: int = 1,
+        *,
+        candidate_gating_enabled: bool = False,
+    ) -> None:
+        self._generator = generator
+        self._max_repairs = max_repairs
+        self._candidate_gating_enabled = candidate_gating_enabled
+
+    def extract(
+        self,
+        *,
+        meeting_date: date,
+        series_name: str,
+        meeting_title: str,
+        segments: list[TranscriptSegment],
+        meeting_type: str = "internal_project",
+        timezone: str = "Asia/Kolkata",
+        output_language: str = "English",
+        workspace_roster: dict[str, str] | None = None,
+        workspace_glossary: dict[str, str] | None = None,
+    ) -> ExtractionResult:
+        selection = select_candidate_segments(
+            segments,
+            enabled=self._candidate_gating_enabled,
+        )
+        selected_segments = selection.segments
+        messages = build_extraction_messages(
+            meeting_date=meeting_date,
+            series_name=series_name,
+            meeting_title=meeting_title,
+            segments=selected_segments,
+            meeting_type=meeting_type,
+            timezone=timezone,
+            output_language=output_language,
+            workspace_roster=workspace_roster,
+            workspace_glossary=workspace_glossary,
+        )
+        schema = MeetingBrief.model_json_schema()
+        valid_ids = {segment.id for segment in selected_segments}
+
+        attempts_used = 0
+        try:
+            result = self._generator.generate_structured(
+                messages=messages,
+                schema_name="meeting_brief",
+                schema=schema,
+            )
+            total_usage = result.usage
+        except SarvamResponseError as exc:
+            total_usage = exc.usage
+            if self._max_repairs == 0:
+                raise BriefValidationError(str(exc), usage=total_usage) from exc
+            attempts_used += 1
+            messages = build_generation_retry_messages(messages, str(exc))
+            try:
+                result = self._generator.generate_structured(
+                    messages=messages,
+                    schema_name="meeting_brief",
+                    schema=schema,
+                )
+            except SarvamResponseError as retry_exc:
+                total_usage = _add_usage(total_usage, retry_exc.usage)
+                raise BriefValidationError(
+                    str(retry_exc),
+                    usage=total_usage,
+                ) from retry_exc
+            total_usage = _add_usage(total_usage, result.usage)
+
+        while True:
+            try:
+                normalized_data = normalize_brief_payload(
+                    result.data,
+                    meeting_date=meeting_date,
+                    timezone=timezone,
+                    output_language=output_language,
+                    segments=selected_segments,
+                )
+                brief = MeetingBrief.model_validate(normalized_data)
+                _validate_brief(
+                    brief,
+                    valid_ids=valid_ids,
+                    meeting_date=meeting_date,
+                    timezone=timezone,
+                    output_language=output_language,
+                )
+                return _result(
+                    brief=brief,
+                    provider_result=result,
+                    usage=total_usage,
+                    repaired=attempts_used > 0,
+                    selection=selection,
+                )
+            except (ValidationError, BriefValidationError) as exc:
+                if attempts_used >= self._max_repairs:
+                    raise BriefValidationError(
+                        "Meeting brief failed validation after "
+                        f"{attempts_used + 1} attempts: {exc}",
+                        usage=total_usage,
+                    ) from exc
+                attempts_used += 1
+                messages = build_repair_messages(messages, result.content, str(exc))
+                try:
+                    result = self._generator.generate_structured(
+                        messages=messages,
+                        schema_name="meeting_brief",
+                        schema=schema,
+                    )
+                except SarvamResponseError as repair_exc:
+                    total_usage = _add_usage(total_usage, repair_exc.usage)
+                    raise BriefValidationError(
+                        str(repair_exc),
+                        usage=total_usage,
+                    ) from repair_exc
+                total_usage = _add_usage(total_usage, result.usage)
+
+
+class CompactMeetingExtractor:
+    """Experimental low-token extractor retained for benchmark comparisons."""
+
     def __init__(self, generator: StructuredGenerator, max_repairs: int = 1) -> None:
         self._generator = generator
         self._max_repairs = max_repairs
@@ -97,10 +234,9 @@ class MeetingExtractor:
                     output_language=output_language,
                     segments=segments,
                 )
-                _validate_evidence(brief, valid_ids)
-                _validate_extraction_provenance(brief)
-                _validate_meeting_context(
+                _validate_brief(
                     brief,
+                    valid_ids=valid_ids,
                     meeting_date=meeting_date,
                     timezone=timezone,
                     output_language=output_language,
@@ -111,6 +247,8 @@ class MeetingExtractor:
                     model=result.model,
                     request_id=result.request_id,
                     repaired=attempt > 0,
+                    original_segment_count=len(segments),
+                    selected_segment_count=len(segments),
                 )
             except (ValidationError, BriefValidationError, CompactCompilationError) as exc:
                 if attempt >= self._max_repairs:
@@ -138,6 +276,43 @@ def _add_usage(left: TokenUsage, right: TokenUsage) -> TokenUsage:
         prompt_tokens=left.prompt_tokens + right.prompt_tokens,
         completion_tokens=left.completion_tokens + right.completion_tokens,
         total_tokens=left.total_tokens + right.total_tokens,
+    )
+
+
+def _result(
+    *,
+    brief: MeetingBrief,
+    provider_result: StructuredChatResult,
+    usage: TokenUsage,
+    repaired: bool,
+    selection: CandidateSelection,
+) -> ExtractionResult:
+    return ExtractionResult(
+        brief=brief,
+        usage=usage,
+        model=provider_result.model,
+        request_id=provider_result.request_id,
+        repaired=repaired,
+        original_segment_count=selection.original_segment_count,
+        selected_segment_count=selection.selected_segment_count,
+    )
+
+
+def _validate_brief(
+    brief: MeetingBrief,
+    *,
+    valid_ids: set[str],
+    meeting_date: date,
+    timezone: str,
+    output_language: str,
+) -> None:
+    _validate_evidence(brief, valid_ids)
+    _validate_extraction_provenance(brief)
+    _validate_meeting_context(
+        brief,
+        meeting_date=meeting_date,
+        timezone=timezone,
+        output_language=output_language,
     )
 
 
