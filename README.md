@@ -74,6 +74,10 @@ uv run streamlit run app.py
 
 The local application stores approved meetings in `data/callrhino.db`.
 
+The accuracy target and required validation set are defined in
+[`docs/accuracy-target.md`](docs/accuracy-target.md). The current synthetic
+benchmark is not evidence of 99.5% production accuracy.
+
 ## Verify
 
 ```bash

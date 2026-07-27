@@ -3,6 +3,7 @@ import pytest
 from callrhino.domain.transcript import (
     apply_speaker_mapping,
     detected_speaker_labels,
+    format_reviewed_transcript,
     format_segments_for_prompt,
     segment_transcript,
 )
@@ -98,3 +99,17 @@ def test_rejects_an_empty_speaker_name() -> None:
 
     with pytest.raises(ValueError, match='Add a name for speaker "Speaker 0"'):
         apply_speaker_mapping(segments, {"Speaker 0": "  "})
+
+
+def test_formats_reviewed_segments_with_mapped_speakers_and_timestamps() -> None:
+    segments = segment_transcript(
+        "[00:01] Speaker 0: Opening.\n[01:02:03] Speaker 1: Reply."
+    )
+    mapped = apply_speaker_mapping(
+        segments,
+        {"Speaker 0": "Aditi", "Speaker 1": "Rohan"},
+    )
+
+    assert format_reviewed_transcript(mapped) == (
+        "[00:01] Aditi: Opening.\n[01:02:03] Rohan: Reply."
+    )

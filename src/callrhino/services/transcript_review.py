@@ -2,7 +2,11 @@ from datetime import date
 from typing import Final
 
 from callrhino.domain.models import PendingTranscript, ReviewedTranscript
-from callrhino.domain.transcript import apply_speaker_mapping, segment_transcript
+from callrhino.domain.transcript import (
+    apply_speaker_mapping,
+    format_reviewed_transcript,
+    segment_transcript,
+)
 
 MIN_TRANSCRIPT_CHARACTERS: Final = 80
 
@@ -44,7 +48,7 @@ def confirm_transcript_review(
         meeting_title=pending.meeting_title,
         meeting_date=pending.meeting_date,
         source_type=pending.source_type,
-        transcript_text=transcript_text,
+        transcript_text=format_reviewed_transcript(mapped_segments),
         segments=mapped_segments,
     )
 

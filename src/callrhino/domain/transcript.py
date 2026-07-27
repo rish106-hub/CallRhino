@@ -116,3 +116,25 @@ def apply_speaker_mapping(
         )
         for segment in ordered_segments
     ]
+
+
+def format_reviewed_transcript(segments: Iterable[TranscriptSegment]) -> str:
+    lines = []
+    for segment in segments:
+        timestamp = (
+            f"[{_milliseconds_to_timestamp(segment.start_ms)}] "
+            if segment.start_ms is not None
+            else ""
+        )
+        speaker = f"{segment.speaker_label}: " if segment.speaker_label else ""
+        lines.append(f"{timestamp}{speaker}{segment.text}")
+    return "\n".join(lines)
+
+
+def _milliseconds_to_timestamp(value: int) -> str:
+    total_seconds = value // 1000
+    hours, remainder = divmod(total_seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    if hours:
+        return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+    return f"{minutes:02d}:{seconds:02d}"
