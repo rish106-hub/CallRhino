@@ -4,7 +4,7 @@ from datetime import date
 from hashlib import sha256
 from typing import Any, Literal
 
-from pydantic import Field
+from pydantic import Field, field_validator
 
 from callrhino.evaluation.evidence import evidence_metadata
 from callrhino.evaluation.extraction_metrics import (
@@ -33,7 +33,7 @@ class PublicHoldoutCase(EvalModel):
     title: str
     meeting_date: date
     meeting_type: str
-    transcript: str
+    transcript: str = Field(min_length=1)
     tags: list[str]
     provenance: Literal["synthetic", "public", "consented"]
     transcript_fingerprint: str = Field(
@@ -46,6 +46,13 @@ class PublicHoldoutCase(EvalModel):
         max_length=_FINGERPRINT_LENGTH,
         pattern=r"^[0-9a-f]{64}$",
     )
+
+    @field_validator("transcript", mode="before")
+    @classmethod
+    def reject_blank_transcript(cls, value: Any) -> Any:
+        if isinstance(value, str) and not value.strip():
+            raise ValueError("holdout transcript cannot be blank")
+        return value
 
 
 class PublicHoldoutPackage(EvalModel):

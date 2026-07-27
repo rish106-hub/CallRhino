@@ -1,8 +1,8 @@
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import Field
 
 from callrhino.domain.models import TranscriptSegment
 from callrhino.domain.transcript import segment_transcript
-from callrhino.evaluation.models import ExtractionCase, ExtractionCaseManifest
+from callrhino.evaluation.models import EvalModel, ExtractionCase, ExtractionCaseManifest
 from callrhino.services.candidates import (
     CONTEXT_RADIUS,
     MAX_SELECTION_RATIO,
@@ -14,24 +14,20 @@ from callrhino.services.prompts import build_extraction_messages
 REQUIRED_GOLD_EVIDENCE_RETENTION = 1.0
 
 
-class EvaluationModel(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-
-class RetentionMetric(EvaluationModel):
+class RetentionMetric(EvalModel):
     retained: int = Field(ge=0)
     gold: int = Field(ge=0)
     ratio: float | None = Field(default=None, ge=0, le=1)
 
 
-class ReductionMetric(EvaluationModel):
+class ReductionMetric(EvalModel):
     baseline: int = Field(ge=0)
     selected: int = Field(ge=0)
     selected_ratio: float | None = Field(default=None, ge=0, le=1)
     reduction_ratio: float | None = Field(default=None, ge=0, le=1)
 
 
-class LongMeetingCaseResult(EvaluationModel):
+class LongMeetingCaseResult(EvalModel):
     case_id: str
     segment_count: int = Field(ge=0)
     selected_segment_count: int = Field(ge=0)
@@ -47,17 +43,18 @@ class LongMeetingCaseResult(EvaluationModel):
     prompt_characters: ReductionMetric
 
 
-class ReleaseGate(EvaluationModel):
+class ReleaseGate(EvalModel):
     passed: bool
     required_gold_evidence_retention: float = REQUIRED_GOLD_EVIDENCE_RETENTION
     reasons: list[str]
 
 
-class LongMeetingEvaluation(EvaluationModel):
+class LongMeetingEvaluation(EvalModel):
     case_count: int = Field(ge=0)
     cases_with_gold_evidence: int = Field(ge=0)
     zero_gold_case_count: int = Field(ge=0)
     filtered_case_count: int = Field(ge=0)
+    filtered_gold_case_count: int = Field(ge=0)
     baseline_gold_evidence_retention: RetentionMetric
     gold_evidence_retention: RetentionMetric
     decision_evidence_retention: RetentionMetric
@@ -105,6 +102,9 @@ def evaluate_long_meetings(
         result.all_evidence_retained is True for result in cases_with_gold
     )
     filtered_case_count = sum(result.filtered for result in case_results)
+    filtered_gold_case_count = sum(
+        result.filtered and result.gold_evidence_count > 0 for result in case_results
+    )
 
     warnings: list[str] = []
     if not case_results:
@@ -124,13 +124,17 @@ def evaluate_long_meetings(
         warnings.append(
             "NO_FILTERED_CASES: candidate gating did not filter any evaluated case."
         )
+    if case_results and not filtered_gold_case_count:
+        warnings.append(
+            "NO_FILTERED_GOLD_CASES: no filtered case contains annotated evidence."
+        )
 
     overall_retention = _retention(retained_count, gold_count)
     case_retention = _retention(all_evidence_cases, len(cases_with_gold))
     gate_reasons = _release_gate_reasons(
         case_count=len(case_results),
         gold_count=gold_count,
-        filtered_case_count=filtered_case_count,
+        filtered_gold_case_count=filtered_gold_case_count,
         overall_retention=overall_retention,
         case_retention=case_retention,
     )
@@ -140,6 +144,7 @@ def evaluate_long_meetings(
         cases_with_gold_evidence=len(cases_with_gold),
         zero_gold_case_count=zero_gold_case_count,
         filtered_case_count=filtered_case_count,
+        filtered_gold_case_count=filtered_gold_case_count,
         baseline_gold_evidence_retention=_retention(gold_count, gold_count),
         gold_evidence_retention=overall_retention,
         decision_evidence_retention=_retention(decision_retained, decision_gold),
@@ -279,7 +284,7 @@ def _release_gate_reasons(
     *,
     case_count: int,
     gold_count: int,
-    filtered_case_count: int,
+    filtered_gold_case_count: int,
     overall_retention: RetentionMetric,
     case_retention: RetentionMetric,
 ) -> list[str]:
@@ -288,8 +293,11 @@ def _release_gate_reasons(
         reasons.append("At least one long-meeting case is required.")
     if not gold_count:
         reasons.append("At least one decision or action evidence segment is required.")
-    if case_count and not filtered_case_count:
-        reasons.append("At least one case must be filtered to evaluate candidate gating.")
+    if case_count and not filtered_gold_case_count:
+        reasons.append(
+            "At least one gold-labelled case must be filtered to evaluate "
+            "candidate gating."
+        )
     if (
         overall_retention.ratio is not None
         and overall_retention.ratio < REQUIRED_GOLD_EVIDENCE_RETENTION

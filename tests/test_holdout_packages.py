@@ -6,6 +6,7 @@ from callrhino.evaluation.holdout import (
     HoldoutPackageError,
     HoldoutPrediction,
     HoldoutPredictionPackage,
+    PublicHoldoutCase,
     create_holdout_packages,
     score_holdout_package,
     validate_gold_package,
@@ -181,6 +182,21 @@ def test_private_gold_rejects_tampering() -> None:
 
     with pytest.raises(HoldoutPackageError, match="invalid fingerprints"):
         validate_gold_package(tampered)
+
+
+def test_public_holdout_rejects_blank_transcript() -> None:
+    with pytest.raises(ValueError, match="transcript cannot be blank"):
+        PublicHoldoutCase(
+            id="blank",
+            title="Blank",
+            meeting_date="2026-07-27",
+            meeting_type="internal_project",
+            transcript="   ",
+            tags=[],
+            provenance="synthetic",
+            transcript_fingerprint="a" * 64,
+            input_fingerprint="b" * 64,
+        )
 
 
 def _manifest() -> ExtractionCaseManifest:

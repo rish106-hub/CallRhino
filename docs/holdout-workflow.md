@@ -66,7 +66,7 @@ The prediction package uses this shape:
       "case_id": "meeting_001",
       "input_fingerprint": "64-character fingerprint copied from the input case",
       "provider": "sarvam",
-      "model": "sarvam-30b",
+      "model": "sarvam-105b",
       "latency_seconds": 1.2,
       "schema_valid": true,
       "repaired": false,

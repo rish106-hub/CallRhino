@@ -22,7 +22,7 @@ from callrhino.annotation import (
 from callrhino.annotation.table import parse_action_rows, parse_decision_rows
 from callrhino.domain.models import CommitmentStatus, DecisionStatus, TemporalPrecision
 from callrhino.domain.transcript import segment_transcript
-from callrhino.evaluation.holdout import create_holdout_packages
+from callrhino.evaluation.holdout import HoldoutPackageError, create_holdout_packages
 from callrhino.ui.styles import apply_styles
 
 ANNOTATION_ROOT = Path("data/annotations")
@@ -407,7 +407,11 @@ def render_consent_and_export(service: AnnotationService) -> None:
         mime="application/json",
         use_container_width=True,
     )
-    public_package, gold_package = _cached_holdout_packages(manifest)
+    try:
+        public_package, gold_package = _cached_holdout_packages(manifest)
+    except HoldoutPackageError as exc:
+        st.error(str(exc))
+        return
     left, right = st.columns(2)
     left.download_button(
         "Download blind holdout input",

@@ -47,6 +47,7 @@ class JsonAnnotationRepository:
     def __init__(self, root: Path) -> None:
         self._root = root
         self._root.mkdir(mode=0o700, parents=True, exist_ok=True)
+        os.chmod(self._root, 0o700)
 
     def create(self, source: SourceMeeting) -> AnnotationRecord:
         with self._meeting_lock(source.id):
@@ -66,16 +67,21 @@ class JsonAnnotationRepository:
     def list_records(self) -> list[AnnotationRecord]:
         records = []
         for path in sorted(self._root.glob("*.json")):
-            try:
-                records.append(
-                    AnnotationRecord.model_validate_json(
-                        path.read_text(encoding="utf-8")
+            with self._meeting_lock(path.stem):
+                if not path.exists():
+                    continue
+                try:
+                    records.append(
+                        AnnotationRecord.model_validate_json(
+                            path.read_text(encoding="utf-8")
+                        )
                     )
-                )
-            except (OSError, ValidationError) as exc:
-                raise AnnotationRepositoryError(
-                    f'Could not load annotation record "{path}": {exc}'
-                ) from exc
+                except FileNotFoundError:
+                    continue
+                except (OSError, ValidationError) as exc:
+                    raise AnnotationRepositoryError(
+                        f'Could not load annotation record "{path}": {exc}'
+                    ) from exc
         return records
 
     def delete(self, meeting_id: str) -> None:

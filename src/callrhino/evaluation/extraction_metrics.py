@@ -70,8 +70,18 @@ def score_extraction_case(
     prediction: ExtractionPrediction,
 ) -> ExtractionCaseScore:
     brief = prediction.brief or {}
-    actual_decisions = brief.get("decisions", [])
-    actual_actions = brief.get("action_items", [])
+    raw_decisions = brief.get("decisions", [])
+    raw_actions = brief.get("action_items", [])
+    actual_decisions = (
+        [item for item in raw_decisions if isinstance(item, dict)]
+        if isinstance(raw_decisions, list)
+        else []
+    )
+    actual_actions = (
+        [item for item in raw_actions if isinstance(item, dict)]
+        if isinstance(raw_actions, list)
+        else []
+    )
     if not prediction.schema_valid:
         return ExtractionCaseScore(
             case_id=case.id,

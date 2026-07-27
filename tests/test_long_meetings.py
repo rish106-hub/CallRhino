@@ -77,6 +77,7 @@ def test_candidate_gate_retains_all_cued_evidence_and_reduces_prompt() -> None:
     assert report.decision_evidence_retention.ratio == 1
     assert report.action_evidence_retention.ratio == 1
     assert report.case_all_evidence_retention.ratio == 1
+    assert report.filtered_gold_case_count > 0
     assert report.segment_selection.selected_ratio < 1
     assert report.prompt_characters.reduction_ratio is not None
     assert report.prompt_characters.reduction_ratio > 0

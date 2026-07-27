@@ -7,7 +7,12 @@ from callrhino.evaluation.holdout import (
     HoldoutPackageError,
     create_holdout_packages,
 )
-from callrhino.evaluation.io import load_model, require_distinct_paths, write_json
+from callrhino.evaluation.io import (
+    load_model,
+    require_distinct_paths,
+    write_json,
+    write_private_json,
+)
 from callrhino.evaluation.models import ExtractionCaseManifest
 
 
@@ -31,7 +36,7 @@ def main() -> None:
         manifest = load_model(args.cases, ExtractionCaseManifest)
         public_package, gold_package = create_holdout_packages(manifest)
         write_json(args.public_output, public_package)
-        write_json(args.gold_output, gold_package)
+        write_private_json(args.gold_output, gold_package)
     except (OSError, ValidationError, HoldoutPackageError) as exc:
         parser.error(str(exc))
 

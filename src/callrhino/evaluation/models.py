@@ -53,7 +53,7 @@ class ExpectedDecision(EvalModel):
     effective_date: date | None = None
     effective_date_text: str | None = None
     date_precision: str
-    evidence_segment_ids: list[str]
+    evidence_segment_ids: list[str] = Field(min_length=1)
 
 
 class ExpectedAction(EvalModel):
@@ -64,7 +64,7 @@ class ExpectedAction(EvalModel):
     due_date: date | None = None
     due_text: str | None = None
     deadline_precision: str
-    evidence_segment_ids: list[str]
+    evidence_segment_ids: list[str] = Field(min_length=1)
 
 
 class ExtractionCase(EvalModel):

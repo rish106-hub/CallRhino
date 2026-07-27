@@ -12,6 +12,7 @@ from callrhino.annotation.models import (
     RedactionStatus,
     ReviewerSubmission,
     SourceMeeting,
+    normalize_forbidden_facts,
 )
 from callrhino.annotation.repository import JsonAnnotationRepository
 from callrhino.evaluation.models import (
@@ -84,7 +85,7 @@ class AnnotationService:
                 ExpectedAction.model_validate(action.model_dump(exclude={"item_id"}))
                 for action in actions
             ],
-            forbidden_facts=forbidden_facts or [],
+            forbidden_facts=normalize_forbidden_facts(forbidden_facts or []),
         )
         return self._repository.set_adjudication(
             meeting_id,

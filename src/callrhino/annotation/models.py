@@ -101,6 +101,16 @@ class AnnotatedDecision(StrictModel):
             raise ValueError("evidence segment IDs must be unique")
         return values
 
+    @model_validator(mode="after")
+    def temporal_fields_are_consistent(self) -> "AnnotatedDecision":
+        _validate_temporal_fields(
+            value=self.effective_date,
+            source_text=self.effective_date_text,
+            precision=self.date_precision,
+            field_name="effective date",
+        )
+        return self
+
 
 class AnnotatedAction(StrictModel):
     item_id: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,119}$")
@@ -120,6 +130,16 @@ class AnnotatedAction(StrictModel):
             raise ValueError("evidence segment IDs must be unique")
         return values
 
+    @model_validator(mode="after")
+    def temporal_fields_are_consistent(self) -> "AnnotatedAction":
+        _validate_temporal_fields(
+            value=self.due_date,
+            source_text=self.due_text,
+            precision=self.deadline_precision,
+            field_name="deadline",
+        )
+        return self
+
 
 class ReviewerSubmission(StrictModel):
     reviewer_id: str = Field(min_length=1, max_length=200)
@@ -132,6 +152,11 @@ class ReviewerSubmission(StrictModel):
     @classmethod
     def normalize_reviewer_id(cls, value: Any) -> Any:
         return value.strip() if isinstance(value, str) else value
+
+    @field_validator("forbidden_facts")
+    @classmethod
+    def normalize_forbidden_fact_list(cls, values: list[str]) -> list[str]:
+        return normalize_forbidden_facts(values)
 
     @model_validator(mode="after")
     def item_ids_are_unique(self) -> "ReviewerSubmission":
@@ -172,3 +197,33 @@ class AnnotationRecord(StrictModel):
         if len(set(normalized)) != len(normalized):
             raise ValueError("reviewer identities must be unique")
         return self
+
+
+def normalize_forbidden_facts(values: list[str]) -> list[str]:
+    normalized = []
+    seen = set()
+    for value in values:
+        cleaned = value.strip()
+        key = cleaned.casefold()
+        if not cleaned or key in seen:
+            continue
+        normalized.append(cleaned)
+        seen.add(key)
+    return normalized
+
+
+def _validate_temporal_fields(
+    *,
+    value: date | None,
+    source_text: str | None,
+    precision: TemporalPrecision,
+    field_name: str,
+) -> None:
+    if precision in {TemporalPrecision.EXACT, TemporalPrecision.RESOLVED_RELATIVE}:
+        if value is None:
+            raise ValueError(f"{field_name} precision requires a concrete date")
+    elif precision == TemporalPrecision.VAGUE:
+        if not source_text or value is not None:
+            raise ValueError(f"vague {field_name} requires source text and no date")
+    elif value is not None or source_text is not None:
+        raise ValueError(f"absent {field_name} cannot contain a date or source text")

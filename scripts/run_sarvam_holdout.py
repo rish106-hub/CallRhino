@@ -1,6 +1,7 @@
 import argparse
 import json
 import time
+from math import isfinite
 from pathlib import Path
 
 from callrhino.config import Settings
@@ -14,6 +15,7 @@ from callrhino.evaluation.holdout import (
 from callrhino.evaluation.io import load_model, require_distinct_paths, write_json
 from callrhino.evaluation.provider_costs import (
     HOLDOUT_MAX_OUTPUT_TOKENS,
+    SARVAM_MODEL_CONTEXT_TOKENS,
     SARVAM_MODEL_PRICING_INR_PER_MILLION,
     sarvam_actual_cost,
     sarvam_holdout_cost_ceiling,
@@ -41,6 +43,8 @@ def main() -> None:
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
 
+    if not isfinite(args.max_cost_inr) or args.max_cost_inr < 0:
+        parser.error("--max-cost-inr must be a finite, non-negative number.")
     try:
         require_distinct_paths(
             inputs={"--public-package": args.public_package},
@@ -53,7 +57,12 @@ def main() -> None:
     validate_public_package(package)
     pricing = SARVAM_MODEL_PRICING_INR_PER_MILLION[args.model]
     cost_ceiling = sum(
-        sarvam_holdout_cost_ceiling(case, pricing) for case in package.cases
+        sarvam_holdout_cost_ceiling(
+            case,
+            pricing,
+            retry_input_token_ceiling=SARVAM_MODEL_CONTEXT_TOKENS[args.model],
+        )
+        for case in package.cases
     )
     if cost_ceiling > args.max_cost_inr:
         raise SystemExit(

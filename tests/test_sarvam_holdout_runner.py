@@ -30,6 +30,7 @@ def _case(transcript: str) -> PublicHoldoutCase:
 def test_cost_ceiling_counts_utf8_bytes_and_two_full_outputs() -> None:
     case = _case("Aditi: हाँ, launch Friday ko karenge.")
     pricing = (4.0, 16.0)
+    retry_input_ceiling = 64_000
     messages = build_extraction_messages(
         meeting_date=case.meeting_date,
         series_name="Blind holdout",
@@ -48,11 +49,15 @@ def test_cost_ceiling_counts_utf8_bytes_and_two_full_outputs() -> None:
     )
 
     expected = (
-        request_bytes * HOLDOUT_MAX_ATTEMPTS * pricing[0]
+        (request_bytes + retry_input_ceiling) * pricing[0]
         + HOLDOUT_MAX_OUTPUT_TOKENS * HOLDOUT_MAX_ATTEMPTS * pricing[1]
     ) / 1_000_000
 
-    assert sarvam_holdout_cost_ceiling(case, pricing) == pytest.approx(expected)
+    assert sarvam_holdout_cost_ceiling(
+        case,
+        pricing,
+        retry_input_token_ceiling=retry_input_ceiling,
+    ) == pytest.approx(expected)
 
 
 def test_indic_text_costs_more_than_same_character_count_ascii() -> None:

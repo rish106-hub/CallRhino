@@ -1,5 +1,5 @@
 from dataclasses import asdict, dataclass
-from math import sqrt
+from math import isfinite, sqrt
 from typing import Any
 
 from callrhino.services.prompts import EXTRACTION_PROMPT_VERSION
@@ -42,6 +42,10 @@ def evaluate_release_readiness(
     minimum_holdout_cases: int = 50,
     minimum_real_meeting_cases: int = 20,
 ) -> ReleaseGateResult:
+    if not isfinite(threshold) or not 0 < threshold <= 1:
+        raise ValueError("release threshold must be finite and between 0 and 1")
+    if minimum_checks_per_metric <= 0:
+        raise ValueError("minimum checks per metric must be positive")
     failures: list[str] = []
     _check_report_identity(
         holdout_report,
@@ -212,6 +216,8 @@ def _check_extraction_report(
         observed = correct / total if total else None
         if (
             not isinstance(value, int | float)
+            or not isfinite(value)
+            or not 0 <= value <= 1
             or observed is None
             or abs(value - observed) > 1e-12
         ):
@@ -240,9 +246,11 @@ def _check_candidate_report(
         failures.append("candidate gating: at least 20 long meetings are required")
     if report.get("zero_gold_case_count") != 0:
         failures.append("candidate gating: every case must contain gold evidence")
-    filtered_cases = report.get("filtered_case_count")
-    if not isinstance(filtered_cases, int) or filtered_cases <= 0:
-        failures.append("candidate gating: at least one case must actually be filtered")
+    filtered_gold_cases = report.get("filtered_gold_case_count")
+    if not isinstance(filtered_gold_cases, int) or filtered_gold_cases <= 0:
+        failures.append(
+            "candidate gating: at least one gold-labelled case must be filtered"
+        )
     overall = _retention_metric(report.get("gold_evidence_retention"))
     if overall is None or overall["gold"] < 200 or overall["ratio"] != 1:
         failures.append(

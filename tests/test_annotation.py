@@ -164,6 +164,26 @@ def test_annotation_enums_reject_unknown_values_at_input_boundary() -> None:
                 "status": "unknown-status",
             }
         )
+
+
+def test_annotation_rejects_inconsistent_temporal_fields() -> None:
+    with pytest.raises(ValidationError, match="requires a concrete date"):
+        AnnotatedDecision(
+            item_id="decision-date",
+            text="Launch on a resolved date.",
+            status="confirmed",
+            date_precision="exact",
+            evidence_segment_ids=["seg_0001"],
+        )
+    with pytest.raises(ValidationError, match="absent deadline"):
+        AnnotatedAction(
+            item_id="action-date",
+            task="Send the deck.",
+            commitment_status="committed",
+            due_text="Friday",
+            deadline_precision="absent",
+            evidence_segment_ids=["seg_0001"],
+        )
     with pytest.raises(ValidationError, match="unknown-precision"):
         AnnotatedAction.model_validate(
             {
@@ -294,7 +314,7 @@ def test_adjudication_requires_two_reviews_and_builds_gold_extraction_case(
         adjudicator_id="lead-reviewer",
         decisions=[_decision()],
         actions=[_action()],
-        forbidden_facts=["Launch is confirmed."],
+        forbidden_facts=[" Launch is confirmed. ", "", "launch is confirmed."],
     )
 
     assert record.adjudication is not None
@@ -303,6 +323,7 @@ def test_adjudication_requires_two_reviews_and_builds_gold_extraction_case(
     assert gold.expected_decisions[0].evidence_segment_ids == ["seg_0001", "seg_0002"]
     assert gold.expected_actions[0].owner_text == "Neha"
     assert "Neha: Payment callback" in gold.transcript
+    assert gold.forbidden_facts == ["Launch is confirmed."]
 
     with pytest.raises(DuplicateAdjudicationError):
         service.adjudicate(
@@ -362,6 +383,7 @@ def test_json_write_is_valid_and_leaves_no_temporary_files(
 
     assert payload["submissions"][0]["reviewer_id"] == "reviewer-1"
     assert record_path.stat().st_mode & 0o777 == 0o600
+    assert record_path.parent.stat().st_mode & 0o777 == 0o700
     assert not list((tmp_path / "annotations").glob("*.tmp"))
 
 

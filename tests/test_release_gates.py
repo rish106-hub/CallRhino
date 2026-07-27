@@ -1,3 +1,5 @@
+import pytest
+
 from callrhino.evaluation.release_gates import (
     CRITICAL_METRICS,
     evaluate_release_readiness,
@@ -71,6 +73,7 @@ def _candidate_report() -> dict:
         "case_count": 20,
         "zero_gold_case_count": 0,
         "filtered_case_count": 12,
+        "filtered_gold_case_count": 12,
         "release_gate": {"passed": True},
         "gold_evidence_retention": {
             "retained": 200,
@@ -208,3 +211,26 @@ def test_wilson_lower_bound_reflects_uncertainty() -> None:
     assert wilson_lower_bound(600, 600) > 0.995
     assert wilson_lower_bound(599, 600) < 0.995
     assert wilson_lower_bound(0, 0) is None
+
+
+@pytest.mark.parametrize("threshold", [float("nan"), float("inf"), -0.1, 1.1])
+def test_release_gate_rejects_invalid_threshold(threshold: float) -> None:
+    with pytest.raises(ValueError, match="threshold must be finite"):
+        evaluate_release_readiness(
+            holdout_report=_holdout(),
+            real_meeting_report=_real(),
+            threshold=threshold,
+        )
+
+
+def test_release_gate_rejects_non_finite_serialized_value() -> None:
+    holdout = _holdout()
+    holdout["summary"]["micro_metrics"]["decision_recall"]["value"] = float("nan")
+
+    result = evaluate_release_readiness(
+        holdout_report=holdout,
+        real_meeting_report=_real(),
+    )
+
+    assert result.ready is False
+    assert any("value does not match its counts" in item for item in result.failures)

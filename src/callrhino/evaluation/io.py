@@ -1,5 +1,7 @@
 import json
+import os
 from pathlib import Path
+from uuid import uuid4
 
 from pydantic import BaseModel
 
@@ -15,6 +17,26 @@ def write_json(path: Path, value: BaseModel | dict | list) -> None:
         json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
+
+
+def write_private_json(path: Path, value: BaseModel | dict | list) -> None:
+    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    payload = value.model_dump(mode="json") if isinstance(value, BaseModel) else value
+    temporary = path.with_name(f".{path.name}.{uuid4().hex}.tmp")
+    try:
+        descriptor = os.open(
+            temporary,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+            0o600,
+        )
+        with os.fdopen(descriptor, "w", encoding="utf-8") as output:
+            output.write(json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
+            output.flush()
+            os.fsync(output.fileno())
+        os.replace(temporary, path)
+        os.chmod(path, 0o600)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def require_distinct_paths(

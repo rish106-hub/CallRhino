@@ -11,11 +11,17 @@ SARVAM_MODEL_PRICING_INR_PER_MILLION = {
 }
 HOLDOUT_MAX_OUTPUT_TOKENS = 4096
 HOLDOUT_MAX_ATTEMPTS = 2
+SARVAM_MODEL_CONTEXT_TOKENS = {
+    "sarvam-30b": 64_000,
+    "sarvam-105b": 128_000,
+}
 
 
 def sarvam_holdout_cost_ceiling(
     case: PublicHoldoutCase,
     pricing: tuple[float, float],
+    *,
+    retry_input_token_ceiling: int = 128_000,
 ) -> float:
     messages = build_extraction_messages(
         meeting_date=case.meeting_date,
@@ -38,7 +44,9 @@ def sarvam_holdout_cost_ceiling(
     input_token_ceiling = request_bytes
     input_price, output_price = pricing
     return (
-        input_token_ceiling * HOLDOUT_MAX_ATTEMPTS * input_price / 1_000_000
+        (input_token_ceiling + retry_input_token_ceiling)
+        * input_price
+        / 1_000_000
         + HOLDOUT_MAX_OUTPUT_TOKENS
         * HOLDOUT_MAX_ATTEMPTS
         * output_price

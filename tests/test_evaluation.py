@@ -101,6 +101,40 @@ def test_extraction_score_penalizes_hallucinated_action() -> None:
     assert action_recall == {"correct": 0, "total": 0, "value": None}
 
 
+def test_schema_failure_tolerates_malformed_brief_collections() -> None:
+    case = ExtractionCase.model_validate(
+        {
+            "id": "malformed",
+            "title": "Malformed output",
+            "meeting_date": "2026-07-27",
+            "transcript": "Asha: Launch Friday.",
+            "tags": ["schema"],
+            "provenance": "synthetic",
+            "expected_decisions": [
+                {
+                    "text": "Launch Friday.",
+                    "status": "confirmed",
+                    "date_precision": "absent",
+                    "evidence_segment_ids": ["seg_0001"],
+                }
+            ],
+        }
+    )
+    prediction = ExtractionPrediction(
+        case_id=case.id,
+        provider="test",
+        model="test",
+        latency_seconds=0,
+        schema_valid=False,
+        brief={"decisions": None, "action_items": None},
+    )
+
+    score = score_extraction_case(case, prediction)
+
+    assert score.schema_valid is False
+    assert score.decision_recall == 0
+
+
 def test_extraction_score_uses_evidence_to_match_valid_paraphrases() -> None:
     cases = load_model(
         Path("evals/cases/indian_meetings.json"),
