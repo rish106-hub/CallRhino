@@ -11,6 +11,7 @@ from callrhino.evaluation.holdout import (
     validate_gold_package,
 )
 from callrhino.evaluation.models import ExtractionCaseManifest
+from callrhino.services.prompts import EXTRACTION_PROMPT_VERSION
 
 
 def test_packages_are_deterministic_and_public_input_has_no_gold() -> None:
@@ -133,6 +134,21 @@ def test_scoring_rejects_package_and_input_fingerprint_mismatches() -> None:
                 predictions=invalid_predictions,
             ),
         )
+
+
+def test_scoring_rejects_predictions_from_stale_prompt() -> None:
+    public, gold = create_holdout_packages(_manifest())
+    predictions = HoldoutPredictionPackage(
+        package_id=public.package_id,
+        prompt_version=f"{EXTRACTION_PROMPT_VERSION}-stale",
+        predictions=[
+            _perfect_prediction(case.id, case.input_fingerprint)
+            for case in public.cases
+        ],
+    )
+
+    with pytest.raises(HoldoutPackageError, match="Prompt version mismatch"):
+        score_holdout_package(gold, predictions)
 
 
 def test_scoring_rejects_duplicate_prediction_ids() -> None:

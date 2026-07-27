@@ -1,4 +1,5 @@
 from datetime import date
+from math import isnan
 from typing import Any
 
 from callrhino.annotation.models import AnnotatedAction, AnnotatedDecision
@@ -8,7 +9,12 @@ def parse_decision_rows(value: Any) -> list[AnnotatedDecision]:
     decisions = []
     for row in table_records(value):
         if not clean_text(row.get("item_id")):
-            continue
+            if _is_placeholder_row(
+                row,
+                defaults={"status": "confirmed", "date_precision": "absent"},
+            ):
+                continue
+            raise ValueError("Decision item ID is required for every populated row.")
         decisions.append(
             AnnotatedDecision(
                 item_id=clean_text(row.get("item_id")),
@@ -28,7 +34,15 @@ def parse_action_rows(value: Any) -> list[AnnotatedAction]:
     actions = []
     for row in table_records(value):
         if not clean_text(row.get("item_id")):
-            continue
+            if _is_placeholder_row(
+                row,
+                defaults={
+                    "commitment_status": "committed",
+                    "deadline_precision": "absent",
+                },
+            ):
+                continue
+            raise ValueError("Action item ID is required for every populated row.")
         actions.append(
             AnnotatedAction(
                 item_id=clean_text(row.get("item_id")),
@@ -55,7 +69,13 @@ def table_records(value: Any) -> list[dict[str, Any]]:
 
 
 def clean_text(value: Any) -> str:
-    return str(value or "").strip()
+    if value is None:
+        return ""
+    if isinstance(value, float) and isnan(value):
+        return ""
+    if type(value).__name__ in {"NAType", "NaTType"}:
+        return ""
+    return str(value).strip()
 
 
 def optional_text(value: Any) -> str | None:
@@ -70,3 +90,18 @@ def optional_date(value: Any) -> date | None:
 
 def evidence_ids(value: Any) -> list[str]:
     return [item.strip() for item in clean_text(value).split(",") if item.strip()]
+
+
+def _is_placeholder_row(
+    row: dict[str, Any],
+    *,
+    defaults: dict[str, str],
+) -> bool:
+    for field, value in row.items():
+        cleaned = clean_text(value)
+        if not cleaned:
+            continue
+        if defaults.get(field) == cleaned:
+            continue
+        return False
+    return True

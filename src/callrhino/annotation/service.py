@@ -1,3 +1,4 @@
+import re
 from typing import Any, Literal
 
 from callrhino.annotation.models import (
@@ -26,12 +27,7 @@ class AnnotationService:
         self._repository = repository
 
     def register_meeting(self, source: SourceMeeting) -> AnnotationRecord:
-        if source.consent_status != ConsentStatus.GRANTED:
-            raise ValueError("granted consent is required before annotation")
-        if source.pii_review_status == PiiReviewStatus.PENDING:
-            raise ValueError("PII review must finish before annotation")
-        if source.redaction_status == RedactionStatus.PENDING:
-            raise ValueError("redaction must finish before annotation")
+        self._ensure_annotation_allowed(source)
         return self._repository.create(source)
 
     def submit_review(
@@ -120,12 +116,12 @@ class AnnotationService:
     @staticmethod
     def _ensure_annotation_allowed(source: SourceMeeting) -> None:
         if source.consent_status != ConsentStatus.GRANTED:
-            raise ValueError("consent is not active")
+            raise ValueError("granted consent is required before annotation")
         if source.pii_review_status not in {
             PiiReviewStatus.CLEAR,
             PiiReviewStatus.REDACTED,
         }:
-            raise ValueError("the transcript has not passed PII review")
+            raise ValueError("PII review must finish before annotation")
         if source.redaction_status == RedactionStatus.PENDING:
             raise ValueError("redaction is incomplete")
 
@@ -248,6 +244,11 @@ def _comparison_value(field: str, value: Any) -> Any:
 def _render_reviewed_transcript(source: SourceMeeting) -> str:
     lines: list[str] = []
     for segment in source.reviewed_segments:
-        speaker = f"{segment.speaker_label}: " if segment.speaker_label else ""
-        lines.append(f"{speaker}{segment.text}")
-    return "\n\n".join(lines)
+        speaker_label = (
+            re.sub(r"\s+", " ", segment.speaker_label).strip()
+            if segment.speaker_label
+            else f"Unknown Speaker {segment.sequence_no}"
+        )
+        text = re.sub(r"\s+", " ", segment.text).strip()
+        lines.append(f"{speaker_label}: {text}")
+    return "\n".join(lines)

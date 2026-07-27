@@ -147,6 +147,23 @@ uv run python scripts/check_release_gates.py \
   --real-meeting-report /private/callrhino/results/real-meeting-score.json
 ```
 
+That command represents candidate gating disabled. To evaluate an enabled
+candidate gate, add:
+
+```text
+--candidate-gating-enabled
+--candidate-report /private/callrhino/results/candidate-retention.json
+```
+
+Track private annotation coverage without provider calls:
+
+```bash
+uv run python scripts/check_annotation_coverage.py \
+  --plan evals/annotation-plan.template.json \
+  --root data/annotations \
+  --require-complete
+```
+
 ## Validation gates
 
 The current beta minimums remain useful for finding regressions:

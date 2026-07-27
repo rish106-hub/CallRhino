@@ -8,13 +8,16 @@ from callrhino.annotation import (
     AnnotatedAction,
     AnnotatedDecision,
     AnnotationRecord,
+    AnnotationRepositoryError,
     AnnotationService,
     ConsentStatus,
+    CoveragePlan,
     JsonAnnotationRepository,
     PiiReviewStatus,
     RedactionStatus,
     ReviewerSubmission,
     SourceMeeting,
+    evaluate_coverage,
 )
 from callrhino.annotation.table import parse_action_rows, parse_decision_rows
 from callrhino.domain.models import CommitmentStatus, DecisionStatus, TemporalPrecision
@@ -23,6 +26,7 @@ from callrhino.evaluation.holdout import create_holdout_packages
 from callrhino.ui.styles import apply_styles
 
 ANNOTATION_ROOT = Path("data/annotations")
+DEFAULT_COVERAGE_PLAN = Path("evals/annotation-plan.template.json")
 
 DECISION_COLUMNS = {
     "item_id": st.column_config.TextColumn("Stable item ID", required=True),
@@ -91,17 +95,77 @@ def main() -> None:
         "Do not expose this app publicly."
     )
 
-    register_tab, review_tab, adjudicate_tab, export_tab = st.tabs(
-        ["Register meeting", "Independent review", "Adjudicate", "Consent & export"]
+    coverage_tab, register_tab, review_tab, adjudicate_tab, export_tab = st.tabs(
+        [
+            "Coverage",
+            "Register meeting",
+            "Independent review",
+            "Adjudicate",
+            "Consent & export",
+        ]
     )
-    with register_tab:
-        render_registration(service)
-    with review_tab:
-        render_review(service)
-    with adjudicate_tab:
-        render_adjudication(service)
-    with export_tab:
-        render_consent_and_export(service)
+    for tab, renderer in (
+        (coverage_tab, render_coverage),
+        (register_tab, render_registration),
+        (review_tab, render_review),
+        (adjudicate_tab, render_adjudication),
+        (export_tab, render_consent_and_export),
+    ):
+        with tab:
+            try:
+                renderer(service)
+            except AnnotationRepositoryError as exc:
+                st.error(str(exc))
+
+
+def render_coverage(service: AnnotationService) -> None:
+    st.subheader("Evidence collection coverage")
+    uploaded_plan = st.file_uploader(
+        "Coverage plan",
+        type=["json"],
+        help="Leave empty to use the strict private-beta template.",
+    )
+    try:
+        plan = CoveragePlan.model_validate_json(
+            uploaded_plan.getvalue()
+            if uploaded_plan is not None
+            else DEFAULT_COVERAGE_PLAN.read_bytes()
+        )
+        report = evaluate_coverage(plan, service.list_records())
+    except (ValueError, OSError) as exc:
+        st.error(str(exc))
+        return
+
+    first, second, third = st.columns(3)
+    first.metric(
+        "Adjudicated meetings",
+        report.adjudicated_meetings,
+        f"{report.remaining_adjudicated_meetings} remaining",
+        delta_color="off",
+    )
+    second.metric(
+        "Labelled decisions",
+        report.expected_decisions,
+        f"{report.remaining_expected_decisions} remaining",
+        delta_color="off",
+    )
+    third.metric(
+        "Labelled actions",
+        report.expected_actions,
+        f"{report.remaining_expected_actions} remaining",
+        delta_color="off",
+    )
+    st.dataframe(
+        [quota.model_dump(mode="json") for quota in report.quotas],
+        hide_index=True,
+        use_container_width=True,
+    )
+    if report.complete:
+        st.success("The annotation coverage plan is complete.")
+    else:
+        st.warning("This dataset is not ready for a 99.5% release claim.")
+        for blocker in report.blockers:
+            st.write(f"- {blocker}")
 
 
 def render_registration(service: AnnotationService) -> None:
@@ -156,7 +220,7 @@ def render_registration(service: AnnotationService) -> None:
             reviewed_segments=segment_transcript(transcript),
         )
         service.register_meeting(source)
-    except (ValueError, OSError) as exc:
+    except (ValueError, OSError, AnnotationRepositoryError) as exc:
         st.error(str(exc))
         return
     st.success("Meeting registered. Reviewers can now label it independently.")
@@ -177,6 +241,10 @@ def render_review(service: AnnotationService) -> None:
     record = _select_record("review_meeting", records)
     _render_transcript(record)
     reviewer_id = st.text_input("Reviewer identity", key=f"reviewer_{record.source.id}")
+    reviewer_scope = reviewer_id.strip().casefold() or "unidentified"
+    decision_key = f"review_decisions_{record.source.id}_{reviewer_scope}"
+    action_key = f"review_actions_{record.source.id}_{reviewer_scope}"
+    forbidden_key = f"review_forbidden_{record.source.id}_{reviewer_scope}"
     st.markdown("#### Decisions")
     decision_rows = st.data_editor(
         [_blank_decision()],
@@ -184,7 +252,7 @@ def render_review(service: AnnotationService) -> None:
         num_rows="dynamic",
         hide_index=True,
         use_container_width=True,
-        key=f"review_decisions_{record.source.id}",
+        key=decision_key,
     )
     st.markdown("#### Actions")
     action_rows = st.data_editor(
@@ -193,11 +261,11 @@ def render_review(service: AnnotationService) -> None:
         num_rows="dynamic",
         hide_index=True,
         use_container_width=True,
-        key=f"review_actions_{record.source.id}",
+        key=action_key,
     )
     forbidden_text = st.text_area(
         "Facts the extractor must never invent, one per line",
-        key=f"review_forbidden_{record.source.id}",
+        key=forbidden_key,
     )
     if not st.button(
         "Submit immutable review",
@@ -214,9 +282,11 @@ def render_review(service: AnnotationService) -> None:
             forbidden_facts=_nonempty_lines(forbidden_text),
         )
         service.submit_review(record.source.id, submission)
-    except (ValueError, OSError) as exc:
+    except (ValueError, OSError, AnnotationRepositoryError) as exc:
         st.error(str(exc))
         return
+    for key in (decision_key, action_key, forbidden_key):
+        st.session_state.pop(key, None)
     st.success("Review stored. It cannot be overwritten.")
 
 
@@ -291,7 +361,7 @@ def render_adjudication(service: AnnotationService) -> None:
             actions=parse_action_rows(action_rows),
             forbidden_facts=_nonempty_lines(forbidden_text),
         )
-    except (ValueError, OSError) as exc:
+    except (ValueError, OSError, AnnotationRepositoryError) as exc:
         st.error(str(exc))
         return
     st.success("Gold case locked. Corrections require a new meeting-record version.")
@@ -312,7 +382,11 @@ def render_consent_and_export(service: AnnotationService) -> None:
             disabled=confirmation != record.source.id,
             key=f"withdraw_{record.source.id}",
         ):
-            service.withdraw_consent(record.source.id)
+            try:
+                service.withdraw_consent(record.source.id)
+            except (ValueError, OSError, AnnotationRepositoryError) as exc:
+                st.error(str(exc))
+                return
             st.success("The annotation record and transcript were deleted.")
             st.rerun()
     else:
@@ -333,7 +407,7 @@ def render_consent_and_export(service: AnnotationService) -> None:
         mime="application/json",
         use_container_width=True,
     )
-    public_package, gold_package = create_holdout_packages(manifest)
+    public_package, gold_package = _cached_holdout_packages(manifest)
     left, right = st.columns(2)
     left.download_button(
         "Download blind holdout input",
@@ -410,31 +484,45 @@ def _blank_action() -> dict[str, Any]:
 
 
 def _merged_decision_rows(record: AnnotationRecord) -> list[dict[str, Any]]:
-    rows: dict[str, dict[str, Any]] = {}
+    rows: dict[str, list[dict[str, Any]]] = {}
     for submission in record.submissions:
         for item in submission.decisions:
-            rows.setdefault(item.item_id, _decision_row(item))
-    return list(rows.values()) or [_blank_decision()]
+            rows.setdefault(item.item_id, []).append(_item_row(item))
+    return _unbiased_rows(rows, _blank_decision)
 
 
 def _merged_action_rows(record: AnnotationRecord) -> list[dict[str, Any]]:
-    rows: dict[str, dict[str, Any]] = {}
+    rows: dict[str, list[dict[str, Any]]] = {}
     for submission in record.submissions:
         for item in submission.actions:
-            rows.setdefault(item.item_id, _action_row(item))
-    return list(rows.values()) or [_blank_action()]
+            rows.setdefault(item.item_id, []).append(_item_row(item))
+    return _unbiased_rows(rows, _blank_action)
 
 
-def _decision_row(item: AnnotatedDecision) -> dict[str, Any]:
+def _item_row(item: AnnotatedDecision | AnnotatedAction) -> dict[str, Any]:
     row = item.model_dump(mode="json")
     row["evidence_segment_ids"] = ", ".join(item.evidence_segment_ids)
     return row
 
 
-def _action_row(item: AnnotatedAction) -> dict[str, Any]:
-    row = item.model_dump(mode="json")
-    row["evidence_segment_ids"] = ", ".join(item.evidence_segment_ids)
-    return row
+def _unbiased_rows(
+    grouped_rows: dict[str, list[dict[str, Any]]],
+    blank_factory: Any,
+) -> list[dict[str, Any]]:
+    merged = []
+    for item_id, reviewer_rows in grouped_rows.items():
+        if len(reviewer_rows) == 2 and reviewer_rows[0] == reviewer_rows[1]:
+            merged.append(reviewer_rows[0])
+            continue
+        blank = blank_factory()
+        blank["item_id"] = item_id
+        merged.append(blank)
+    return merged or [blank_factory()]
+
+
+@st.cache_data(show_spinner=False)
+def _cached_holdout_packages(manifest: Any) -> Any:
+    return create_holdout_packages(manifest)
 
 
 def _nonempty_lines(value: str) -> list[str]:

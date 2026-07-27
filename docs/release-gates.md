@@ -2,20 +2,25 @@
 
 CallRhino does not use one averaged accuracy number.
 
-The release check requires two separate extraction reports:
+The release check requires two independently identified reports:
 
 1. A frozen holdout that prompt authors did not inspect during development.
 2. A private set of consented, dual-reviewed real meetings.
 
-Every critical metric must be at least `99.5%`. Each metric also needs at least
-`200` labelled checks. A perfect score on eight synthetic cases therefore fails.
-Schemas must pass at `100%`, and forbidden facts must remain at zero.
+Each report must include its evidence kind, dataset ID, 64-character dataset
+fingerprint, prompt version, provider, and model. Reused datasets, stale prompts,
+or incomparable model runs fail.
 
-The default minimum data sizes are:
+Every critical metric needs at least `600` labelled checks. Its one-sided 95%
+Wilson lower confidence bound must be at least `99.5%`. A point estimate of
+`599/600` therefore fails. Schemas must pass at `100%`, and manually specified
+forbidden facts must remain at zero.
+
+The default minimum sizes are:
 
 - `50` frozen holdout meetings
 - `20` consented real meetings
-- `200` checks for every critical field metric
+- `600` checks for every critical field metric
 
 Run:
 
@@ -32,5 +37,10 @@ When candidate gating is enabled, also pass:
 --candidate-report path/to/long-meeting-report.json
 ```
 
-Candidate gating requires `100%` gold evidence retention overall and in every
-evaluated long meeting. Cost reduction never compensates for a missed gold fact.
+Candidate gating requires at least 20 long meetings, 200 gold evidence
+segments, non-zero decision and action evidence, at least one genuinely
+filtered case, and 100% retention. Cost reduction never compensates for a
+missed gold fact.
+
+The forbidden-fact metric checks only the forbidden facts written by reviewers.
+It is not proof that every possible unsupported statement was detected.

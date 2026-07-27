@@ -11,7 +11,7 @@ from callrhino.evaluation.holdout import (
     PublicHoldoutPackage,
     validate_public_package,
 )
-from callrhino.evaluation.io import load_model, write_json
+from callrhino.evaluation.io import load_model, require_distinct_paths, write_json
 from callrhino.evaluation.provider_costs import (
     HOLDOUT_MAX_OUTPUT_TOKENS,
     SARVAM_MODEL_PRICING_INR_PER_MILLION,
@@ -41,6 +41,14 @@ def main() -> None:
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
 
+    try:
+        require_distinct_paths(
+            inputs={"--public-package": args.public_package},
+            outputs={"--output": args.output},
+        )
+    except ValueError as exc:
+        parser.error(str(exc))
+
     package = load_model(args.public_package, PublicHoldoutPackage)
     validate_public_package(package)
     pricing = SARVAM_MODEL_PRICING_INR_PER_MILLION[args.model]
@@ -59,75 +67,77 @@ def main() -> None:
     )
     predictions: list[HoldoutPrediction] = []
     total_cost = 0.0
-    with SarvamChatClient(settings) as client:
-        extractor = MeetingExtractor(client, max_repairs=1)
-        for case in package.cases:
-            started = time.perf_counter()
-            try:
-                result = extractor.extract(
-                    meeting_date=case.meeting_date,
-                    series_name="Blind holdout",
-                    meeting_title=case.title,
-                    meeting_type=case.meeting_type,
-                    segments=segment_transcript(case.transcript),
-                )
-                latency = time.perf_counter() - started
-                cost = sarvam_actual_cost(
-                    result.usage.prompt_tokens,
-                    result.usage.completion_tokens,
-                    pricing,
-                )
-                prediction = HoldoutPrediction(
-                    case_id=case.id,
-                    input_fingerprint=case.input_fingerprint,
-                    provider="sarvam",
-                    model=result.model,
-                    latency_seconds=latency,
-                    schema_valid=True,
-                    repaired=result.repaired,
-                    prompt_tokens=result.usage.prompt_tokens,
-                    completion_tokens=result.usage.completion_tokens,
-                    estimated_cost_inr=cost,
-                    brief=result.brief.model_dump(mode="json"),
-                )
-            except (BriefValidationError, SarvamError) as exc:
-                latency = time.perf_counter() - started
-                usage = (
-                    exc.usage
-                    if isinstance(exc, BriefValidationError | SarvamResponseError)
-                    else None
-                )
-                cost = (
-                    sarvam_actual_cost(
-                        usage.prompt_tokens,
-                        usage.completion_tokens,
+    _write_progress(args.output, package.package_id, predictions, total_cost)
+    try:
+        with SarvamChatClient(settings) as client:
+            extractor = MeetingExtractor(client, max_repairs=1)
+            for case in package.cases:
+                started = time.perf_counter()
+                try:
+                    result = extractor.extract(
+                        meeting_date=case.meeting_date,
+                        series_name="Blind holdout",
+                        meeting_title=case.title,
+                        meeting_type=case.meeting_type,
+                        segments=segment_transcript(case.transcript),
+                    )
+                    latency = time.perf_counter() - started
+                    cost = sarvam_actual_cost(
+                        result.usage.prompt_tokens,
+                        result.usage.completion_tokens,
                         pricing,
                     )
-                    if usage
-                    else 0
+                    prediction = HoldoutPrediction(
+                        case_id=case.id,
+                        input_fingerprint=case.input_fingerprint,
+                        provider="sarvam",
+                        model=result.model,
+                        latency_seconds=latency,
+                        schema_valid=True,
+                        repaired=result.repaired,
+                        prompt_tokens=result.usage.prompt_tokens,
+                        completion_tokens=result.usage.completion_tokens,
+                        estimated_cost_inr=cost,
+                        brief=result.brief.model_dump(mode="json"),
+                    )
+                except (BriefValidationError, SarvamError) as exc:
+                    latency = time.perf_counter() - started
+                    usage = (
+                        exc.usage
+                        if isinstance(exc, BriefValidationError | SarvamResponseError)
+                        else None
+                    )
+                    cost = (
+                        sarvam_actual_cost(
+                            usage.prompt_tokens,
+                            usage.completion_tokens,
+                            pricing,
+                        )
+                        if usage
+                        else 0
+                    )
+                    prediction = HoldoutPrediction(
+                        case_id=case.id,
+                        input_fingerprint=case.input_fingerprint,
+                        provider="sarvam",
+                        model=args.model,
+                        latency_seconds=latency,
+                        schema_valid=False,
+                        prompt_tokens=usage.prompt_tokens if usage else 0,
+                        completion_tokens=usage.completion_tokens if usage else 0,
+                        estimated_cost_inr=cost,
+                        error=str(exc),
+                    )
+                total_cost += cost
+                predictions.append(prediction)
+                _write_progress(
+                    args.output,
+                    package.package_id,
+                    predictions,
+                    total_cost,
                 )
-                prediction = HoldoutPrediction(
-                    case_id=case.id,
-                    input_fingerprint=case.input_fingerprint,
-                    provider="sarvam",
-                    model=args.model,
-                    latency_seconds=latency,
-                    schema_valid=False,
-                    prompt_tokens=usage.prompt_tokens if usage else 0,
-                    completion_tokens=usage.completion_tokens if usage else 0,
-                    estimated_cost_inr=cost,
-                    error=str(exc),
-                )
-            total_cost += cost
-            predictions.append(prediction)
-
-    output = HoldoutPredictionPackage(
-        package_id=package.package_id,
-        prompt_version=EXTRACTION_PROMPT_VERSION,
-        actual_total_cost_inr=total_cost,
-        predictions=predictions,
-    )
-    write_json(args.output, output)
+    finally:
+        _write_progress(args.output, package.package_id, predictions, total_cost)
     print(
         json.dumps(
             {
@@ -139,5 +149,24 @@ def main() -> None:
             indent=2,
         )
     )
+
+
+def _write_progress(
+    path: Path,
+    package_id: str,
+    predictions: list[HoldoutPrediction],
+    total_cost: float,
+) -> None:
+    write_json(
+        path,
+        HoldoutPredictionPackage(
+            package_id=package_id,
+            prompt_version=EXTRACTION_PROMPT_VERSION,
+            actual_total_cost_inr=total_cost,
+            predictions=predictions,
+        ),
+    )
+
+
 if __name__ == "__main__":
     main()

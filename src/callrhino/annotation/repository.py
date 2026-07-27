@@ -6,6 +6,8 @@ from pathlib import Path
 from typing import TypeVar
 from uuid import uuid4
 
+from pydantic import ValidationError
+
 from callrhino.annotation.models import (
     Adjudication,
     AnnotationRecord,
@@ -62,10 +64,19 @@ class JsonAnnotationRepository:
         return AnnotationRecord.model_validate_json(path.read_text(encoding="utf-8"))
 
     def list_records(self) -> list[AnnotationRecord]:
-        return [
-            AnnotationRecord.model_validate_json(path.read_text(encoding="utf-8"))
-            for path in sorted(self._root.glob("*.json"))
-        ]
+        records = []
+        for path in sorted(self._root.glob("*.json")):
+            try:
+                records.append(
+                    AnnotationRecord.model_validate_json(
+                        path.read_text(encoding="utf-8")
+                    )
+                )
+            except (OSError, ValidationError) as exc:
+                raise AnnotationRepositoryError(
+                    f'Could not load annotation record "{path}": {exc}'
+                ) from exc
+        return records
 
     def delete(self, meeting_id: str) -> None:
         with self._meeting_lock(meeting_id):

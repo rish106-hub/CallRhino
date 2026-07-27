@@ -28,6 +28,12 @@ uv run streamlit run annotation_app.py
 
 Do not deploy this interface publicly.
 
+Use the Coverage tab or
+[`check_annotation_coverage.py`](../scripts/check_annotation_coverage.py) to
+track the remaining language, noise, meeting, decision, and action quotas. See
+[`real-meeting-collection.md`](real-meeting-collection.md) for the collection
+boundary.
+
 ## Segment preparation
 
 Review and redact the transcript before registration. Segment IDs must be

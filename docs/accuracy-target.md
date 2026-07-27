@@ -31,6 +31,10 @@ The target must be measured on:
 
 Eight synthetic cases are regression tests. They cannot establish 99.5%.
 
+The release checker requires at least 600 checks per critical metric and a
+one-sided 95% Wilson lower confidence bound of at least 99.5%. A raw score of
+599/600 does not pass.
+
 ## Current branch contribution
 
 The staged transcript review removes avoidable upstream errors:

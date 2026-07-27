@@ -5,6 +5,30 @@ from callrhino.evaluation.models import ExtractionCase, ExtractionPrediction
 from callrhino.evaluation.text_metrics import normalize_text, token_f1
 
 MATCH_THRESHOLD = 0.48
+_NEGATION_MARKERS = {
+    "not",
+    "never",
+    "wont",
+    "won't",
+    "dont",
+    "don't",
+    "didnt",
+    "didn't",
+    "nahi",
+    "nahin",
+    "mat",
+}
+_CANCELLATION_MARKERS = {
+    "cancel",
+    "canceled",
+    "cancelled",
+    "reject",
+    "rejected",
+    "stop",
+    "stopped",
+    "drop",
+    "dropped",
+}
 
 
 @dataclass(frozen=True)
@@ -301,6 +325,8 @@ def _item_match_score(
     expected_evidence: list[str],
     actual_evidence: list[str],
 ) -> float:
+    if _polarity_signature(expected_text) != _polarity_signature(actual_text):
+        return 0
     text_score = token_f1(expected_text, actual_text)
     if text_score < 0.15:
         return text_score
@@ -312,6 +338,11 @@ def _item_match_score(
 
     overlap = len(expected_ids & actual_ids) / min(len(expected_ids), len(actual_ids))
     return max(text_score, (text_score + overlap) / 2)
+
+
+def _polarity_signature(text: str) -> tuple[bool, bool]:
+    tokens = set(normalize_text(text).split())
+    return bool(tokens & _NEGATION_MARKERS), bool(tokens & _CANCELLATION_MARKERS)
 
 
 def _ratio(numerator: int, denominator: int) -> float:

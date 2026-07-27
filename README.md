@@ -83,6 +83,9 @@ uv run streamlit run annotation_app.py
 It stores consented, redacted annotation records under `data/annotations/`,
 which is ignored by Git. Do not deploy the annotation app publicly.
 
+The Coverage tab shows the exact remaining meeting, decision, action, language,
+noise, and speaker-quality evidence required by the private-beta plan.
+
 The accuracy target and required validation set are defined in
 [`docs/accuracy-target.md`](docs/accuracy-target.md). The current synthetic
 benchmark is not evidence of 99.5% production accuracy.

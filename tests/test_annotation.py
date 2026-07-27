@@ -23,6 +23,7 @@ from callrhino.annotation.repository import (
 )
 from callrhino.annotation.service import AnnotationService
 from callrhino.domain.models import TranscriptSegment
+from callrhino.domain.transcript import segment_transcript
 
 
 def _source(**updates: object) -> SourceMeeting:
@@ -145,6 +146,30 @@ def test_source_rejects_noncanonical_segments_and_invalid_redaction_state() -> N
                     text="Hello",
                 )
             ]
+        )
+
+
+def test_annotation_text_is_stripped_before_length_validation() -> None:
+    with pytest.raises(ValidationError, match="at least 1 character"):
+        _source(title="   ")
+    with pytest.raises(ValidationError, match="at least 1 character"):
+        ReviewerSubmission(reviewer_id="   ")
+
+
+def test_annotation_enums_reject_unknown_values_at_input_boundary() -> None:
+    with pytest.raises(ValidationError, match="unknown-status"):
+        AnnotatedDecision.model_validate(
+            {
+                **_decision().model_dump(),
+                "status": "unknown-status",
+            }
+        )
+    with pytest.raises(ValidationError, match="unknown-precision"):
+        AnnotatedAction.model_validate(
+            {
+                **_action().model_dump(),
+                "deadline_precision": "unknown-precision",
+            }
         )
     with pytest.raises(ValidationError, match="completed redaction"):
         _source(
@@ -286,6 +311,43 @@ def test_adjudication_requires_two_reviews_and_builds_gold_extraction_case(
             decisions=[_decision()],
             actions=[_action()],
         )
+
+
+def test_adjudicated_transcript_preserves_reviewed_segment_boundaries(
+    service: AnnotationService,
+) -> None:
+    source = _source(
+        reviewed_segments=[
+            TranscriptSegment(
+                id="seg_0001",
+                sequence_no=1,
+                speaker_label=" Neha ",
+                text="First line.\n\nStill the same segment.",
+            ),
+            TranscriptSegment(
+                id="seg_0002",
+                sequence_no=2,
+                speaker_label=None,
+                text="Anonymous follow-up.",
+            ),
+        ]
+    )
+    service.register_meeting(source)
+    service.submit_review("consented_meeting_001", _submission("reviewer-1"))
+    service.submit_review("consented_meeting_001", _submission("reviewer-2"))
+
+    record = service.adjudicate(
+        "consented_meeting_001",
+        adjudicator_id="lead-reviewer",
+        decisions=[_decision()],
+        actions=[_action()],
+    )
+
+    assert record.adjudication is not None
+    rendered = segment_transcript(record.adjudication.extraction_case.transcript)
+    assert [segment.id for segment in rendered] == ["seg_0001", "seg_0002"]
+    assert rendered[0].text == "First line. Still the same segment."
+    assert rendered[1].speaker_label == "Unknown Speaker 2"
 
 
 def test_json_write_is_valid_and_leaves_no_temporary_files(

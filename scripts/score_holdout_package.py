@@ -10,7 +10,7 @@ from callrhino.evaluation.holdout import (
     PrivateGoldPackage,
     score_holdout_package,
 )
-from callrhino.evaluation.io import load_model, write_json
+from callrhino.evaluation.io import load_model, require_distinct_paths, write_json
 
 
 def main() -> None:
@@ -23,6 +23,13 @@ def main() -> None:
     args = parser.parse_args()
 
     try:
+        require_distinct_paths(
+            inputs={
+                "--gold": args.gold,
+                "--predictions": args.predictions,
+            },
+            outputs={"--output": args.output},
+        )
         gold = load_model(args.gold, PrivateGoldPackage)
         predictions = load_model(args.predictions, HoldoutPredictionPackage)
         result = score_holdout_package(gold, predictions)

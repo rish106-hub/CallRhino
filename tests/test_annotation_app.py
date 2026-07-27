@@ -63,3 +63,42 @@ def test_annotation_table_rejects_invalid_date() -> None:
         assert "Invalid isoformat" in str(exc)
     else:
         raise AssertionError("invalid table date should fail")
+
+
+def test_annotation_table_rejects_populated_row_without_item_id() -> None:
+    try:
+        parse_decision_rows(
+            [
+                {
+                    "item_id": "",
+                    "text": "Launch Friday.",
+                    "status": "confirmed",
+                    "date_precision": "absent",
+                }
+            ]
+        )
+    except ValueError as exc:
+        assert "Decision item ID is required" in str(exc)
+    else:
+        raise AssertionError("populated row without item ID should fail")
+
+
+def test_annotation_table_treats_nan_cells_as_empty() -> None:
+    actions = parse_action_rows(
+        [
+            {
+                "item_id": "action_deck",
+                "task": "Send the deck.",
+                "commitment_status": "committed",
+                "owner_text": float("nan"),
+                "suggested_owner_text": float("nan"),
+                "due_date": float("nan"),
+                "due_text": float("nan"),
+                "deadline_precision": "absent",
+                "evidence_segment_ids": "seg_0001",
+            }
+        ]
+    )
+
+    assert actions[0].owner_text is None
+    assert actions[0].due_date is None

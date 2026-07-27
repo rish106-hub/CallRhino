@@ -12,6 +12,7 @@ from callrhino.annotation.models import (
 )
 from callrhino.annotation.repository import (
     AnnotationNotFoundError,
+    AnnotationRepositoryError,
     DuplicateAdjudicationError,
     DuplicateMeetingError,
     DuplicateReviewerError,
@@ -26,16 +27,29 @@ __all__ = [
     "AnnotatedDecision",
     "AnnotationNotFoundError",
     "AnnotationRecord",
+    "AnnotationRepositoryError",
     "AnnotationService",
     "ConsentStatus",
+    "CoveragePlan",
+    "CoverageQuota",
+    "CoverageReport",
     "DuplicateAdjudicationError",
     "DuplicateMeetingError",
     "DuplicateReviewerError",
     "FieldDisagreement",
     "JsonAnnotationRepository",
     "PiiReviewStatus",
+    "QuotaCoverage",
     "RedactionStatus",
     "ReviewerLimitError",
     "ReviewerSubmission",
     "SourceMeeting",
+    "evaluate_coverage",
 ]
+from callrhino.annotation.coverage import (
+    CoveragePlan,
+    CoverageQuota,
+    CoverageReport,
+    QuotaCoverage,
+    evaluate_coverage,
+)

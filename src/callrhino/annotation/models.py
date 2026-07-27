@@ -4,7 +4,13 @@ from typing import Any, Literal
 
 from pydantic import Field, field_validator, model_validator
 
-from callrhino.domain.models import StrictModel, TranscriptSegment
+from callrhino.domain.models import (
+    CommitmentStatus,
+    DecisionStatus,
+    StrictModel,
+    TemporalPrecision,
+    TranscriptSegment,
+)
 from callrhino.evaluation.models import ExtractionCase
 
 
@@ -39,10 +45,10 @@ class SourceMeeting(StrictModel):
     provenance: Literal["consented"] = "consented"
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
-    @field_validator("title", "meeting_type", "consent_reference")
+    @field_validator("title", "meeting_type", "consent_reference", mode="before")
     @classmethod
-    def strip_required_text(cls, value: str) -> str:
-        return value.strip()
+    def strip_required_text(cls, value: Any) -> Any:
+        return value.strip() if isinstance(value, str) else value
 
     @field_validator("tags")
     @classmethod
@@ -81,11 +87,11 @@ class SourceMeeting(StrictModel):
 class AnnotatedDecision(StrictModel):
     item_id: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,119}$")
     text: str = Field(min_length=1, max_length=1000)
-    status: str = Field(min_length=1, max_length=100)
+    status: DecisionStatus
     decision_maker_text: str | None = Field(default=None, max_length=300)
     effective_date: date | None = None
     effective_date_text: str | None = Field(default=None, max_length=300)
-    date_precision: str = Field(min_length=1, max_length=100)
+    date_precision: TemporalPrecision
     evidence_segment_ids: list[str] = Field(min_length=1)
 
     @field_validator("evidence_segment_ids")
@@ -99,12 +105,12 @@ class AnnotatedDecision(StrictModel):
 class AnnotatedAction(StrictModel):
     item_id: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,119}$")
     task: str = Field(min_length=1, max_length=1000)
-    commitment_status: str = Field(min_length=1, max_length=100)
+    commitment_status: CommitmentStatus
     owner_text: str | None = Field(default=None, max_length=300)
     suggested_owner_text: str | None = Field(default=None, max_length=300)
     due_date: date | None = None
     due_text: str | None = Field(default=None, max_length=300)
-    deadline_precision: str = Field(min_length=1, max_length=100)
+    deadline_precision: TemporalPrecision
     evidence_segment_ids: list[str] = Field(min_length=1)
 
     @field_validator("evidence_segment_ids")
@@ -122,10 +128,10 @@ class ReviewerSubmission(StrictModel):
     forbidden_facts: list[str] = Field(default_factory=list)
     submitted_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
-    @field_validator("reviewer_id")
+    @field_validator("reviewer_id", mode="before")
     @classmethod
-    def normalize_reviewer_id(cls, value: str) -> str:
-        return value.strip()
+    def normalize_reviewer_id(cls, value: Any) -> Any:
+        return value.strip() if isinstance(value, str) else value
 
     @model_validator(mode="after")
     def item_ids_are_unique(self) -> "ReviewerSubmission":
@@ -148,10 +154,10 @@ class Adjudication(StrictModel):
     extraction_case: ExtractionCase
     adjudicated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
-    @field_validator("adjudicator_id")
+    @field_validator("adjudicator_id", mode="before")
     @classmethod
-    def normalize_adjudicator_id(cls, value: str) -> str:
-        return value.strip()
+    def normalize_adjudicator_id(cls, value: Any) -> Any:
+        return value.strip() if isinstance(value, str) else value
 
 
 class AnnotationRecord(StrictModel):

@@ -7,7 +7,7 @@ from callrhino.evaluation.holdout import (
     HoldoutPackageError,
     create_holdout_packages,
 )
-from callrhino.evaluation.io import load_model, write_json
+from callrhino.evaluation.io import load_model, require_distinct_paths, write_json
 from callrhino.evaluation.models import ExtractionCaseManifest
 
 
@@ -20,10 +20,14 @@ def main() -> None:
     parser.add_argument("--gold-output", type=Path, required=True)
     args = parser.parse_args()
 
-    if args.public_output.resolve() == args.gold_output.resolve():
-        parser.error("Public and private gold outputs must use different paths.")
-
     try:
+        require_distinct_paths(
+            inputs={"--cases": args.cases},
+            outputs={
+                "--public-output": args.public_output,
+                "--gold-output": args.gold_output,
+            },
+        )
         manifest = load_model(args.cases, ExtractionCaseManifest)
         public_package, gold_package = create_holdout_packages(manifest)
         write_json(args.public_output, public_package)

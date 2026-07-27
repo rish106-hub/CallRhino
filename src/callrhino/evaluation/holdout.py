@@ -6,6 +6,7 @@ from typing import Any, Literal
 
 from pydantic import Field
 
+from callrhino.evaluation.evidence import evidence_metadata
 from callrhino.evaluation.extraction_metrics import (
     score_extraction_case,
     summarize_extraction,
@@ -182,6 +183,11 @@ def score_holdout_package(
             f"Package ID mismatch: gold is {gold.package_id}, "
             f"predictions are {predictions.package_id}."
         )
+    if predictions.prompt_version != EXTRACTION_PROMPT_VERSION:
+        raise HoldoutPackageError(
+            f"Prompt version mismatch: predictions used {predictions.prompt_version}, "
+            f"current prompt is {EXTRACTION_PROMPT_VERSION}."
+        )
 
     prediction_by_id = _prediction_index(predictions.predictions)
     gold_by_id = {item.case.id: item for item in gold.cases}
@@ -210,10 +216,30 @@ def score_holdout_package(
         score_extraction_case(item.case, prediction_by_id[item.case.id])
         for item in sorted(gold.cases, key=lambda value: value.case.id)
     ]
+    providers = {item.provider for item in predictions.predictions}
+    models = {item.model for item in predictions.predictions}
+    dataset_fingerprint = _fingerprint(
+        "callrhino-holdout-gold-v1",
+        [
+            {
+                "case_id": item.case.id,
+                "input_fingerprint": item.input_fingerprint,
+            }
+            for item in sorted(gold.cases, key=lambda value: value.case.id)
+        ],
+    )
     return {
         "format_version": HOLDOUT_FORMAT_VERSION,
         "package_id": gold.package_id,
         "source_version": gold.source_version,
+        "evidence": evidence_metadata(
+            kind="frozen_holdout",
+            dataset_id=gold.package_id,
+            dataset_fingerprint=dataset_fingerprint,
+            prompt_version=predictions.prompt_version,
+            provider=next(iter(providers)) if len(providers) == 1 else None,
+            model=next(iter(models)) if len(models) == 1 else None,
+        ),
         "summary": summarize_extraction(scores),
     }
 
