@@ -100,6 +100,8 @@ src/callrhino/
 │   ├── candidates.py
 │   ├── compact_prompts.py
 │   ├── compiler.py
+│   ├── deduplication.py
+│   ├── evidence.py
 │   ├── exports.py
 │   ├── extraction.py
 │   ├── prompts.py
@@ -153,8 +155,10 @@ fact extraction prompts.
 
 The returned `message.content` is parsed as JSON and then validated again with
 Pydantic. Evidence IDs are checked against the submitted transcript segments.
-Mechanical warning fields and supported date phrases are normalized locally
-before validation, which avoids paying for repairs that do not need model judgment.
+Evidence context, duplicate state items, mechanical warning fields, and supported
+date phrases are normalized locally before validation. This avoids paying for
+repairs that do not need model judgment and prevents unsupported dates or
+duplicated commitments from entering the review draft.
 
 Long-form audio uses Sarvam's Batch Speech-to-Text API with `saaras:v3`,
 `codemix`, timestamps, and speaker diarization. The batch path supports meetings

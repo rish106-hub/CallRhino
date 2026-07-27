@@ -105,7 +105,7 @@ Numeric model confidence is not part of the canonical v2 record.
 
 ## Versioning
 
-- Prompt version: `extract-v2.2`
+- Prompt version: `extract-v2.3`
 - Canonical schema version: `2.0`
 - SQLite storage schema version: `2`
 

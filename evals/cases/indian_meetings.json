@@ -50,7 +50,7 @@
           "effective_date": null,
           "effective_date_text": null,
           "date_precision": "absent",
-          "evidence_segment_ids": ["seg_0003"]
+          "evidence_segment_ids": ["seg_0002", "seg_0003"]
         }
       ],
       "expected_actions": [

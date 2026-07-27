@@ -4,6 +4,8 @@ from datetime import date, timedelta
 from typing import Any
 
 from callrhino.domain.models import TranscriptSegment, WarningCode
+from callrhino.services.deduplication import remove_duplicate_items
+from callrhino.services.evidence import complete_evidence_context
 
 WEEKDAYS = {
     "monday": 0,
@@ -35,6 +37,13 @@ VAGUE_DATE_TERMS = (
     "next sprint",
     "jaldi",
 )
+MECHANICAL_WARNING_CODES = {
+    WarningCode.MISSING_OWNER.value,
+    WarningCode.MISSING_DEADLINE.value,
+    WarningCode.VAGUE_DEADLINE.value,
+    WarningCode.UNACCEPTED_ASSIGNMENT.value,
+    WarningCode.LOW_CONFIDENCE.value,
+}
 
 
 def normalize_brief_payload(
@@ -54,9 +63,18 @@ def normalize_brief_payload(
         meeting["output_language"] = output_language
 
     evidence = {segment.id: segment.text for segment in segments or []}
+    remove_duplicate_items(normalized)
+    complete_evidence_context(normalized, segments or [])
     for action in _dict_items(normalized.get("action_items")):
         _normalize_action(action, meeting_date, evidence)
     for decision in _dict_items(normalized.get("decisions")):
+        _remove_unsupported_temporal_text(
+            decision,
+            text_key="effective_date_text",
+            date_key="effective_date",
+            precision_key="date_precision",
+            evidence=evidence,
+        )
         _normalize_temporal(
             decision,
             text_key="effective_date_text",
@@ -64,6 +82,7 @@ def normalize_brief_payload(
             precision_key="date_precision",
             meeting_date=meeting_date,
         )
+    _normalize_top_level_warnings(normalized)
     return normalized
 
 
@@ -71,6 +90,36 @@ def _dict_items(value: Any) -> list[dict[str, Any]]:
     if not isinstance(value, list):
         return []
     return [item for item in value if isinstance(item, dict)]
+
+
+def _normalize_top_level_warnings(payload: dict[str, Any]) -> None:
+    warnings = payload.get("warnings")
+    actions = _dict_items(payload.get("action_items"))
+    if not isinstance(warnings, list):
+        return
+
+    normalized: list[Any] = []
+    for warning in warnings:
+        if not isinstance(warning, dict) or warning.get("related_item_type") != "action_item":
+            normalized.append(warning)
+            continue
+        index = warning.get("related_item_index")
+        code = warning.get("code")
+        if (
+            not isinstance(index, int)
+            or index < 0
+            or index >= len(actions)
+            or code not in MECHANICAL_WARNING_CODES
+        ):
+            normalized.append(warning)
+            continue
+        item_warnings = {
+            item.value if isinstance(item, WarningCode) else item
+            for item in actions[index].get("warnings", [])
+        }
+        if code in item_warnings:
+            normalized.append(warning)
+    payload["warnings"] = normalized
 
 
 def _normalize_action(
@@ -93,6 +142,13 @@ def _normalize_action(
         if not action.get("suggested_owner_text"):
             _remove_warning(warnings, WarningCode.UNACCEPTED_ASSIGNMENT)
 
+    _remove_unsupported_temporal_text(
+        action,
+        text_key="due_text",
+        date_key="due_date",
+        precision_key="deadline_precision",
+        evidence=evidence,
+    )
     _normalize_temporal(
         action,
         text_key="due_text",
@@ -123,6 +179,46 @@ def _normalize_action(
         )
         if not _states_priority(source, str(action["priority"])):
             action["priority"] = "unknown"
+
+
+def _remove_unsupported_temporal_text(
+    item: dict[str, Any],
+    *,
+    text_key: str,
+    date_key: str,
+    precision_key: str,
+    evidence: dict[str, str],
+) -> None:
+    if not evidence:
+        return
+    source_text = item.get(text_key)
+    if not isinstance(source_text, str) or not source_text.strip():
+        return
+    evidence_ids = item.get("evidence_segment_ids")
+    if not isinstance(evidence_ids, list):
+        return
+    cited_text = " ".join(
+        evidence.get(segment_id, "")
+        for segment_id in evidence_ids
+        if isinstance(segment_id, str)
+    )
+    if _date_phrase_is_grounded(source_text, cited_text):
+        return
+    item[text_key] = None
+    item[date_key] = None
+    item[precision_key] = "absent"
+
+
+def _date_phrase_is_grounded(source_text: str, cited_text: str) -> bool:
+    source = re.sub(r"\s+", " ", source_text.casefold()).strip()
+    cited = re.sub(r"\s+", " ", cited_text.casefold())
+    if source in cited:
+        return True
+    aliases = {
+        "today": ("aaj", "innikku", "today"),
+        "tomorrow": ("tomorrow",),
+    }
+    return any(alias in cited for alias in aliases.get(source, ()))
 
 
 def _append_warning(warnings: list[Any], code: WarningCode) -> None:
