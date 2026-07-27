@@ -4,7 +4,7 @@ from datetime import date
 from callrhino.domain.models import TranscriptSegment
 from callrhino.domain.transcript import format_segments_for_prompt
 
-EXTRACTION_PROMPT_VERSION = "extract-v2.2"
+EXTRACTION_PROMPT_VERSION = "extract-v2.3"
 
 IDENTITY_AND_AUTHORITY_POLICY = """\
 # Identity
@@ -39,6 +39,15 @@ CANONICAL_DEFINITIONS_POLICY = """\
   transcript. Do not convert general concern or negative tone into a risk.
 - A problem report, status update, intention, recommendation, or request is not
   an action unless a person or group accepts future work.
+- An operational decision explicitly sets how work will proceed, such as keeping
+  an owner open, waiting for approval, pausing work, reassigning work, or setting
+  a gate condition. Record it when the participants clearly adopt that state.
+- When a requested action is refused or not accepted, inspect the response for a
+  separate operational decision. Emit both only when the action remains requested
+  and the meeting explicitly chooses how ownership or progress will be handled.
+- An operational state choice is not a second action item. Do not duplicate
+  "keep the owner open", "wait for approval", "pause", or an equivalent state
+  as future work unless the transcript separately assigns a concrete deliverable.
 - When the meeting explicitly cancels or changes an older decision, record the
   current state once with status=reversed. Do not also emit the obsolete decision
   as confirmed.
@@ -143,6 +152,9 @@ EDGE_CASE_EXAMPLES = """\
 
 - "Rohan should prepare the report." without acceptance: requested, owner is
   unassigned, suggested owner is Rohan.
+- "Send the PO." / "I cannot commit before approval." / "Keep the owner open
+  until approval.": one requested action and one operational decision to keep
+  ownership open until approval.
 - "I will prepare it by Friday." from Rohan: committed, owner is Rohan,
   owner basis is self_commitment.
 - "Maybe we launch Friday." without agreement: not a confirmed decision.

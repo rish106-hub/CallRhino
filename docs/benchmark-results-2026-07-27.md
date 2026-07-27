@@ -101,12 +101,40 @@ paraphrases:
 This was not a fresh eight-case provider run. It combines seven saved outputs
 with one targeted rerun and must not be presented as release validation.
 
+`extract-v2.3` added explicit operational-decision rules. A fresh provider run
+then passed all eight schemas without repair. Its outputs were replayed through
+the finalized deterministic evidence and normalization layer after the provider
+run. The resulting development-set diagnostic was:
+
+| Metric | Result |
+|---|---:|
+| Schema pass | 100% |
+| Decision precision and recall | 100% each |
+| Action precision and recall | 100% each |
+| Owner accuracy | 100% |
+| Status accuracy | 100% |
+| Decision-date accuracy | 100% |
+| Deadline accuracy | 100% |
+| Evidence accuracy | 100% |
+| Forbidden prompt-injection facts | 0 |
+| Mean latency | 4.16 seconds |
+| Total provider cost | ₹0.118 |
+
+The local layer completed context for reversals, deferrals, terse approvals,
+requested actions, and pronoun-based commitments. It also removed duplicate
+operational actions, same-owner commitment decisions, stale warnings, and an
+unsupported decision date. One development gold label was corrected to include
+the segment that established finance approval.
+
+This is regression evidence on eight inspected synthetic cases. It is not a
+holdout result and does not support a `99.5%` production claim.
+
 Current weaknesses:
 
-- the provider can produce a length-truncated response on a tiny transcript
-- the unaccepted-assignment case still misses one operational decision
-- evidence sets still include too much or too little context
-- regional-language decisions remain unstable across repeated runs
+- provider output still shows run-to-run variance
+- the development set is small and prompt-visible
+- long-meeting candidate gating has no independent recall result
+- positive end-to-end real meeting audio is still missing
 
 Local deterministic normalization now resolves the supported date phrases,
 removes stale deadline warnings, strips unsupported priority guesses, and rejects
