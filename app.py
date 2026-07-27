@@ -281,7 +281,10 @@ def render_pending_transcript() -> None:
             st.spinner("Reading commitments, decisions, and loose ends..."),
             SarvamChatClient(settings) as client,
         ):
-            result = MeetingExtractor(client).extract(
+            result = MeetingExtractor(
+                client,
+                candidate_gating_enabled=settings.candidate_gating_enabled,
+            ).extract(
                 meeting_date=reviewed.meeting_date,
                 series_name=reviewed.series_name,
                 meeting_title=reviewed.meeting_title,
@@ -302,6 +305,8 @@ def render_pending_transcript() -> None:
         "model": result.model,
         "tokens": result.usage.total_tokens,
         "repaired": result.repaired,
+        "original_segments": result.original_segment_count,
+        "selected_segments": result.selected_segment_count,
     }
     clear_pending_transcript()
     st.rerun()
@@ -329,10 +334,16 @@ def render_current_draft(repository: SQLiteMeetingRepository) -> None:
         clear_draft()
         st.rerun()
 
-    controls[2].caption(
-        f"Model: {context['model']} | Tokens: {context['tokens']}"
-        + (" | Repaired once" if context["repaired"] else "")
-    )
+    extraction_details = f"Model: {context['model']} | Tokens: {context['tokens']}"
+    original_segments = context.get("original_segments", len(segments))
+    selected_segments = context.get("selected_segments", original_segments)
+    if selected_segments < original_segments:
+        extraction_details += (
+            f" | Segments: {selected_segments}/{original_segments}"
+        )
+    if context["repaired"]:
+        extraction_details += " | Repaired once"
+    controls[2].caption(extraction_details)
 
     warning_count = len(brief.warnings)
     metrics = st.columns(4)

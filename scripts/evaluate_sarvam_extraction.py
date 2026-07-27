@@ -5,6 +5,7 @@ from pathlib import Path
 
 from callrhino.config import Settings
 from callrhino.domain.compact import CompactExtraction
+from callrhino.domain.models import MeetingBrief
 from callrhino.domain.transcript import segment_transcript
 from callrhino.evaluation.extraction_metrics import (
     score_extraction_case,
@@ -16,11 +17,17 @@ from callrhino.evaluation.models import (
     ExtractionCaseManifest,
     ExtractionPrediction,
 )
+from callrhino.services.candidates import select_candidate_segments
 from callrhino.services.compact_prompts import (
     COMPACT_EXTRACTION_PROMPT_VERSION,
     build_compact_extraction_messages,
 )
-from callrhino.services.extraction import BriefValidationError, MeetingExtractor
+from callrhino.services.extraction import (
+    BriefValidationError,
+    CompactMeetingExtractor,
+    MeetingExtractor,
+)
+from callrhino.services.prompts import EXTRACTION_PROMPT_VERSION, build_extraction_messages
 from callrhino.services.sarvam import (
     SarvamChatClient,
     SarvamError,
@@ -31,7 +38,11 @@ MODEL_PRICING = {
     "sarvam-30b": (2.5, 10.0),
     "sarvam-105b": (4.0, 16.0),
 }
-MAX_OUTPUT_TOKENS_PER_ATTEMPT = 2048
+OUTPUT_TOKEN_CEILINGS = {
+    "canonical": 4096,
+    "canonical-gated": 4096,
+    "compact": 2048,
+}
 
 
 def main() -> None:
@@ -44,6 +55,11 @@ def main() -> None:
         default=Path("evals/cases/indian_meetings.json"),
     )
     parser.add_argument("--max-cost-inr", type=float, required=True)
+    parser.add_argument(
+        "--strategy",
+        choices=["canonical", "canonical-gated", "compact"],
+        default="canonical",
+    )
     parser.add_argument(
         "--model",
         choices=sorted(MODEL_PRICING),
@@ -59,7 +75,8 @@ def main() -> None:
     cases = load_model(args.cases, ExtractionCaseManifest)
     pricing = MODEL_PRICING[args.model]
     estimated_ceiling = sum(
-        _case_cost_ceiling(case, pricing=pricing) for case in cases.cases
+        _case_cost_ceiling(case, pricing=pricing, strategy=args.strategy)
+        for case in cases.cases
     )
     if estimated_ceiling > args.max_cost_inr:
         raise SystemExit(
@@ -70,9 +87,20 @@ def main() -> None:
     predictions: list[ExtractionPrediction] = []
     scores = []
     running_cost = 0.0
-    settings = Settings(SARVAM_CHAT_MODEL=args.model)
+    settings = Settings(
+        SARVAM_CHAT_MODEL=args.model,
+        SARVAM_MAX_OUTPUT_TOKENS=OUTPUT_TOKEN_CEILINGS[args.strategy],
+    )
     with SarvamChatClient(settings) as client:
-        extractor = MeetingExtractor(client, max_repairs=1)
+        extractor = (
+            MeetingExtractor(
+                client,
+                max_repairs=1,
+                candidate_gating_enabled=args.strategy == "canonical-gated",
+            )
+            if args.strategy.startswith("canonical")
+            else CompactMeetingExtractor(client, max_repairs=1)
+        )
         for case in cases.cases:
             started = time.perf_counter()
             try:
@@ -143,7 +171,12 @@ def main() -> None:
     output = {
         "provider": "sarvam",
         "model": settings.sarvam_chat_model,
-        "prompt_version": COMPACT_EXTRACTION_PROMPT_VERSION,
+        "strategy": args.strategy,
+        "prompt_version": (
+            EXTRACTION_PROMPT_VERSION
+            if args.strategy.startswith("canonical")
+            else COMPACT_EXTRACTION_PROMPT_VERSION
+        ),
         "conservative_cost_ceiling_inr": estimated_ceiling,
         "actual_total_cost_inr": running_cost,
         "summary": summarize_extraction(scores),
@@ -157,17 +190,33 @@ def _case_cost_ceiling(
     case: ExtractionCase,
     *,
     pricing: tuple[float, float],
+    strategy: str,
 ) -> float:
     segments = segment_transcript(case.transcript)
-    messages = build_compact_extraction_messages(
-        meeting_date=case.meeting_date,
-        series_name="CallRhino evaluation",
-        meeting_title=case.title,
-        meeting_type=case.meeting_type,
-        segments=segments,
-    )
+    if strategy.startswith("canonical"):
+        selected_segments = select_candidate_segments(
+            segments,
+            enabled=strategy == "canonical-gated",
+        ).segments
+        messages = build_extraction_messages(
+            meeting_date=case.meeting_date,
+            series_name="CallRhino evaluation",
+            meeting_title=case.title,
+            meeting_type=case.meeting_type,
+            segments=selected_segments,
+        )
+        schema = MeetingBrief.model_json_schema()
+    else:
+        messages = build_compact_extraction_messages(
+            meeting_date=case.meeting_date,
+            series_name="CallRhino evaluation",
+            meeting_title=case.title,
+            meeting_type=case.meeting_type,
+            segments=segments,
+        )
+        schema = CompactExtraction.model_json_schema()
     prompt_chars = len(json.dumps(messages, ensure_ascii=False))
-    schema_chars = len(json.dumps(CompactExtraction.model_json_schema(), ensure_ascii=False))
+    schema_chars = len(json.dumps(schema, ensure_ascii=False))
     estimated_input_tokens = (prompt_chars + schema_chars) / 4
     attempts = 2
     input_price, output_price = pricing
@@ -176,7 +225,7 @@ def _case_cost_ceiling(
         * attempts
         * input_price
         / 1_000_000
-        + MAX_OUTPUT_TOKENS_PER_ATTEMPT
+        + OUTPUT_TOKEN_CEILINGS[strategy]
         * attempts
         * output_price
         / 1_000_000

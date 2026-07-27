@@ -97,6 +97,9 @@ src/callrhino/
 │   ├── base.py
 │   └── sqlite.py
 ├── services/
+│   ├── candidates.py
+│   ├── compact_prompts.py
+│   ├── compiler.py
 │   ├── exports.py
 │   ├── extraction.py
 │   ├── prompts.py
@@ -110,12 +113,19 @@ src/callrhino/
 The domain package has no Streamlit, Sarvam, or database dependency. Provider
 and persistence adapters can be changed without rewriting the extraction rules.
 
-## Experimental compact extractor
+## Extraction strategies
 
-The `codex/compact-extraction-cost` branch asks the model for a small semantic
-fact list and compiles the canonical meeting record locally. This reduces the
-combined prompt and schema payload by 71.3% and roughly halves observed cost,
-but the current benchmark loses too much action precision. It is not merge-ready.
+The application uses the full canonical extractor by default. An experimental
+deterministic candidate gate can submit relevant segments plus surrounding
+context for long transcripts. The gate uses no model call and falls back to the
+full transcript when it cannot reduce the input safely. It remains disabled by
+default until it passes an independent long-meeting holdout. Enable it only for
+testing with `CALLRHINO_CANDIDATE_GATING_ENABLED=true`.
+
+The compact extractor remains available for controlled benchmarks. It asks the
+model for a smaller fact list and compiles the canonical record locally. It
+reduced the combined prompt and schema payload by 71.3% and lowered observed
+cost, but it did not meet the accuracy gates. It is not used by the application.
 See [`docs/compact-extraction-experiment.md`](docs/compact-extraction-experiment.md).
 
 ## Sarvam integration
@@ -187,7 +197,9 @@ uv run python scripts/prepare_kaggle_eval.py
 
 Provider benchmark scripts require an explicit `--max-cost-inr` argument and
 refuse calls above that ceiling. See [`evals/README.md`](evals/README.md) and the
-current [benchmark report](docs/benchmark-results-2026-07-27.md).
+current [benchmark report](docs/benchmark-results-2026-07-27.md). The data split,
+review, and 99.5% claim rules are defined in
+[`docs/evaluation-protocol.md`](docs/evaluation-protocol.md).
 
 ## Supabase
 

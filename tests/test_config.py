@@ -41,3 +41,11 @@ def test_openai_soft_budget_cannot_exceed_hard_budget() -> None:
 def test_sarvam_output_cap_cannot_exceed_provider_guardrail() -> None:
     with pytest.raises(ValidationError):
         Settings(SARVAM_MAX_OUTPUT_TOKENS=4097, _env_file=None)
+
+
+def test_candidate_gating_requires_explicit_opt_in() -> None:
+    defaults = Settings(_env_file=None)
+    enabled = Settings(CALLRHINO_CANDIDATE_GATING_ENABLED=True, _env_file=None)
+
+    assert not defaults.candidate_gating_enabled
+    assert enabled.candidate_gating_enabled

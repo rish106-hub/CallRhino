@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     sarvam_api_key: str | None = Field(default=None, alias="SARVAM_API_KEY")
     sarvam_chat_model: str = Field(default="sarvam-105b", alias="SARVAM_CHAT_MODEL")
     sarvam_max_output_tokens: int = Field(
-        default=2048,
+        default=4096,
         ge=512,
         le=4096,
         alias="SARVAM_MAX_OUTPUT_TOKENS",
@@ -38,6 +38,10 @@ class Settings(BaseSettings):
         default=1800,
         gt=0,
         alias="SARVAM_BATCH_TIMEOUT_SECONDS",
+    )
+    candidate_gating_enabled: bool = Field(
+        default=False,
+        alias="CALLRHINO_CANDIDATE_GATING_ENABLED",
     )
 
     openai_api_key: str | None = Field(default=None, alias="OPENAI_API_KEY")

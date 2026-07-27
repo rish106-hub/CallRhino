@@ -244,3 +244,20 @@ def build_repair_messages(
             ),
         },
     ]
+
+
+def build_generation_retry_messages(
+    original_messages: list[dict[str, str]],
+    generation_error: str,
+) -> list[dict[str, str]]:
+    return [
+        *original_messages,
+        {
+            "role": "user",
+            "content": (
+                "The previous response could not be parsed. Return the complete brief "
+                "once, using concise field values and no repeated text. Do not add "
+                f"commentary. Provider error: {generation_error}"
+            ),
+        },
+    ]
