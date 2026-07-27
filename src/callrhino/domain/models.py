@@ -338,6 +338,19 @@ class TranscriptSegment(StrictModel):
     text: str = Field(min_length=1)
 
 
+class PendingTranscript(StrictModel):
+    series_name: str = Field(min_length=1)
+    meeting_title: str = Field(min_length=1)
+    meeting_date: date
+    source_type: str = Field(min_length=1)
+    transcript_text: str = Field(min_length=1)
+    segments: list[TranscriptSegment] = Field(min_length=1)
+
+
+class ReviewedTranscript(PendingTranscript):
+    pass
+
+
 class ApprovedMeeting(StrictModel):
     id: str
     series_name: str

@@ -1,5 +1,5 @@
 import re
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 
 from callrhino.domain.models import TranscriptSegment
 
@@ -77,3 +77,42 @@ def format_segments_for_prompt(segments: Iterable[TranscriptSegment]) -> str:
         lines.append(f"[{segment.id}] {speaker}{segment.text}")
     return "\n".join(lines)
 
+
+def detected_speaker_labels(segments: Iterable[TranscriptSegment]) -> list[str]:
+    labels: list[str] = []
+    seen: set[str] = set()
+    for segment in segments:
+        label = segment.speaker_label
+        if label is not None and label not in seen:
+            labels.append(label)
+            seen.add(label)
+    return labels
+
+
+def apply_speaker_mapping(
+    segments: Iterable[TranscriptSegment],
+    speaker_mapping: Mapping[str, str],
+) -> list[TranscriptSegment]:
+    ordered_segments = list(segments)
+    detected_labels = set(detected_speaker_labels(ordered_segments))
+    normalized_mapping: dict[str, str] = {}
+
+    for source_label, target_label in speaker_mapping.items():
+        if source_label not in detected_labels:
+            continue
+        normalized_target = target_label.strip()
+        if not normalized_target:
+            raise ValueError(f'Add a name for speaker "{source_label}".')
+        normalized_mapping[source_label] = normalized_target
+
+    return [
+        segment.model_copy(
+            update={
+                "speaker_label": normalized_mapping.get(
+                    segment.speaker_label,
+                    segment.speaker_label,
+                )
+            }
+        )
+        for segment in ordered_segments
+    ]
