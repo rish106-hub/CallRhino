@@ -22,6 +22,20 @@ def manifest_fingerprint(manifest: ExtractionCaseManifest) -> str:
     return sha256(canonical.encode("utf-8")).hexdigest()
 
 
+def manifest_case_fingerprints(manifest: ExtractionCaseManifest) -> list[str]:
+    return [
+        sha256(
+            json.dumps(
+                case.model_dump(mode="json"),
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()
+        for case in sorted(manifest.cases, key=lambda item: item.id)
+    ]
+
+
 def evidence_metadata(
     *,
     kind: EvidenceKind,
@@ -30,7 +44,8 @@ def evidence_metadata(
     prompt_version: str | None,
     provider: str | None,
     model: str | None,
-) -> dict[str, str | None]:
+    case_fingerprints: list[str],
+) -> dict[str, str | list[str] | None]:
     return {
         "kind": kind,
         "dataset_id": dataset_id,
@@ -38,4 +53,5 @@ def evidence_metadata(
         "prompt_version": prompt_version,
         "provider": provider,
         "model": model,
+        "case_fingerprints": sorted(case_fingerprints),
     }

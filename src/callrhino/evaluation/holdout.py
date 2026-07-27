@@ -246,6 +246,10 @@ def score_holdout_package(
             prompt_version=predictions.prompt_version,
             provider=next(iter(providers)) if len(providers) == 1 else None,
             model=next(iter(models)) if len(models) == 1 else None,
+            case_fingerprints=[
+                item.input_fingerprint
+                for item in sorted(gold.cases, key=lambda value: value.case.id)
+            ],
         ),
         "summary": summarize_extraction(scores),
     }

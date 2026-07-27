@@ -146,7 +146,8 @@ def test_unknown_gold_evidence_id_is_rejected() -> None:
 
 def test_empty_template_is_a_valid_extraction_manifest() -> None:
     manifest = load_model(
-        Path("evals/cases/long_meetings.template.json"),
+        Path(__file__).resolve().parent.parent
+        / "evals/cases/long_meetings.template.json",
         ExtractionCaseManifest,
     )
 

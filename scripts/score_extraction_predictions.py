@@ -2,7 +2,11 @@ import argparse
 import json
 from pathlib import Path
 
-from callrhino.evaluation.evidence import evidence_metadata, manifest_fingerprint
+from callrhino.evaluation.evidence import (
+    evidence_metadata,
+    manifest_case_fingerprints,
+    manifest_fingerprint,
+)
 from callrhino.evaluation.extraction_metrics import (
     score_extraction_case,
     summarize_extraction,
@@ -76,6 +80,7 @@ def main() -> None:
             prompt_version=raw_predictions.get("prompt_version"),
             provider=raw_predictions.get("provider"),
             model=raw_predictions.get("model"),
+            case_fingerprints=manifest_case_fingerprints(cases),
         ),
         "summary": summary,
     }

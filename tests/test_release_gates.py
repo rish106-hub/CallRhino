@@ -41,6 +41,7 @@ def _report(
             "prompt_version": EXTRACTION_PROMPT_VERSION,
             "provider": "sarvam",
             "model": "sarvam-105b",
+            "case_fingerprints": [fingerprint_char * 63 + "1"],
         },
         "summary": _summary(cases=cases, correct=correct, total=total),
     }
@@ -133,6 +134,9 @@ def test_single_error_in_six_hundred_does_not_prove_995() -> None:
 def test_reports_must_be_independent_and_comparable() -> None:
     real = _real(dataset_id="holdout-v1", fingerprint_char="a")
     real["evidence"]["model"] = "sarvam-30b"
+    real["evidence"]["case_fingerprints"] = _holdout()["evidence"][
+        "case_fingerprints"
+    ]
 
     result = evaluate_release_readiness(
         holdout_report=_holdout(),
@@ -142,6 +146,7 @@ def test_reports_must_be_independent_and_comparable() -> None:
     assert result.ready is False
     assert any("share dataset_id" in failure for failure in result.failures)
     assert any("share dataset_fingerprint" in failure for failure in result.failures)
+    assert any("share case fingerprints" in failure for failure in result.failures)
     assert any("different model" in failure for failure in result.failures)
 
 

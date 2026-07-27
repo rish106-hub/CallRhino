@@ -142,6 +142,20 @@ def _check_report_identity(
         and (len(fingerprint) != 64 or any(char not in "0123456789abcdef" for char in fingerprint))
     ):
         failures.append(f"{name}: dataset fingerprint must be 64 lowercase hex characters")
+    case_fingerprints = evidence.get("case_fingerprints")
+    if (
+        not isinstance(case_fingerprints, list)
+        or not case_fingerprints
+        or any(
+            not isinstance(value, str)
+            or len(value) != 64
+            or any(char not in "0123456789abcdef" for char in value)
+            for value in case_fingerprints
+        )
+    ):
+        failures.append(f"{name}: valid case fingerprints are required")
+    elif len(case_fingerprints) != len(set(case_fingerprints)):
+        failures.append(f"{name}: case fingerprints must be unique")
 
 
 def _check_independence(
@@ -159,6 +173,14 @@ def _check_independence(
         if isinstance(left, str) and left and left == right:
             failures.append(
                 f"independent evidence: holdout and real meetings share {field}"
+            )
+    holdout_cases = holdout.get("case_fingerprints")
+    real_cases = real.get("case_fingerprints")
+    if isinstance(holdout_cases, list) and isinstance(real_cases, list):
+        overlap = set(holdout_cases) & set(real_cases)
+        if overlap:
+            failures.append(
+                "independent evidence: holdout and real meetings share case fingerprints"
             )
     for field in ("prompt_version", "provider", "model"):
         left = holdout.get(field)
