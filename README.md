@@ -74,6 +74,18 @@ uv run streamlit run app.py
 
 The local application stores approved meetings in `data/callrhino.db`.
 
+The private annotation workflow is a separate local app:
+
+```bash
+uv run streamlit run annotation_app.py
+```
+
+It stores consented, redacted annotation records under `data/annotations/`,
+which is ignored by Git. Do not deploy the annotation app publicly.
+
+The Coverage tab shows the exact remaining meeting, decision, action, language,
+noise, and speaker-quality evidence required by the private-beta plan.
+
 The accuracy target and required validation set are defined in
 [`docs/accuracy-target.md`](docs/accuracy-target.md). The current synthetic
 benchmark is not evidence of 99.5% production accuracy.
@@ -203,7 +215,9 @@ Provider benchmark scripts require an explicit `--max-cost-inr` argument and
 refuse calls above that ceiling. See [`evals/README.md`](evals/README.md) and the
 current [benchmark report](docs/benchmark-results-2026-07-27.md). The data split,
 review, and 99.5% claim rules are defined in
-[`docs/evaluation-protocol.md`](docs/evaluation-protocol.md).
+[`docs/evaluation-protocol.md`](docs/evaluation-protocol.md). Executable
+sample-size and metric gates are documented in
+[`docs/release-gates.md`](docs/release-gates.md).
 
 ## Supabase
 

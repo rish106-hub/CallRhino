@@ -2,10 +2,14 @@ from pathlib import Path
 
 import pytest
 
-from callrhino.evaluation.extraction_metrics import score_extraction_case
+from callrhino.evaluation.extraction_metrics import (
+    score_extraction_case,
+    summarize_extraction,
+)
 from callrhino.evaluation.io import load_model
 from callrhino.evaluation.models import (
     BenchmarkManifest,
+    ExtractionCase,
     ExtractionCaseManifest,
     ExtractionPrediction,
 )
@@ -86,6 +90,49 @@ def test_extraction_score_penalizes_hallucinated_action() -> None:
     assert score.action_precision == 0
     assert score.action_recall == 1
     assert score.forbidden_fact_count == 1
+    assert score.expected_action_count == 0
+    assert score.predicted_action_count == 1
+    assert score.matched_action_count == 0
+
+    summary = summarize_extraction([score])
+    action_precision = summary["micro_metrics"]["action_precision"]
+    assert action_precision == {"correct": 0, "total": 1, "value": 0.0}
+    action_recall = summary["micro_metrics"]["action_recall"]
+    assert action_recall == {"correct": 0, "total": 0, "value": None}
+
+
+def test_schema_failure_tolerates_malformed_brief_collections() -> None:
+    case = ExtractionCase.model_validate(
+        {
+            "id": "malformed",
+            "title": "Malformed output",
+            "meeting_date": "2026-07-27",
+            "transcript": "Asha: Launch Friday.",
+            "tags": ["schema"],
+            "provenance": "synthetic",
+            "expected_decisions": [
+                {
+                    "text": "Launch Friday.",
+                    "status": "confirmed",
+                    "date_precision": "absent",
+                    "evidence_segment_ids": ["seg_0001"],
+                }
+            ],
+        }
+    )
+    prediction = ExtractionPrediction(
+        case_id=case.id,
+        provider="test",
+        model="test",
+        latency_seconds=0,
+        schema_valid=False,
+        brief={"decisions": None, "action_items": None},
+    )
+
+    score = score_extraction_case(case, prediction)
+
+    assert score.schema_valid is False
+    assert score.decision_recall == 0
 
 
 def test_extraction_score_uses_evidence_to_match_valid_paraphrases() -> None:
@@ -140,6 +187,50 @@ def test_extraction_score_does_not_match_unrelated_text_from_same_segment() -> N
                 {
                     "text": "Order lunch for the office",
                     "evidence_segment_ids": ["seg_0003"],
+                }
+            ],
+            "action_items": [],
+        },
+    )
+
+    score = score_extraction_case(case, prediction)
+
+    assert score.decision_precision == 0
+    assert score.decision_recall == 0
+
+
+def test_extraction_score_rejects_opposite_polarity_with_same_evidence() -> None:
+    case = ExtractionCase.model_validate(
+        {
+            "id": "opposite-polarity",
+            "title": "Launch review",
+            "meeting_date": "2026-07-27",
+            "transcript": "Asha: Cancel the Android launch on Friday.",
+            "tags": ["negation"],
+            "provenance": "synthetic",
+            "expected_decisions": [
+                {
+                    "text": "Cancel the Android launch on Friday.",
+                    "status": "confirmed",
+                    "date_precision": "absent",
+                    "evidence_segment_ids": ["seg_0001"],
+                }
+            ],
+        }
+    )
+    prediction = ExtractionPrediction(
+        case_id=case.id,
+        provider="test",
+        model="test",
+        latency_seconds=0,
+        schema_valid=True,
+        brief={
+            "decisions": [
+                {
+                    "text": "Launch Android on Friday.",
+                    "status": "confirmed",
+                    "date_precision": "absent",
+                    "evidence_segment_ids": ["seg_0001"],
                 }
             ],
             "action_items": [],

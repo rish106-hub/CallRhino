@@ -103,6 +103,67 @@ The validator rejects repeated case IDs and repeated transcript text across
 splits. See [`docs/evaluation-protocol.md`](../docs/evaluation-protocol.md) for
 the full review protocol.
 
+## Blind holdout
+
+Create separate public-input and private-gold packages:
+
+```bash
+uv run python scripts/create_holdout_package.py \
+  --cases /private/callrhino/holdout-source.json \
+  --public-output /private/callrhino/run/holdout-input.json \
+  --gold-output /private/callrhino/gold/holdout-gold.json
+```
+
+Run extraction with only the public package:
+
+```bash
+uv run python scripts/run_sarvam_holdout.py \
+  --public-package /private/callrhino/run/holdout-input.json \
+  --model sarvam-105b \
+  --max-cost-inr 10 \
+  --output /private/callrhino/run/predictions.json
+```
+
+Score it only inside the private evaluator environment. See
+[`docs/holdout-workflow.md`](../docs/holdout-workflow.md).
+
+## Long-meeting gate
+
+Candidate gating stays disabled unless every gold evidence segment survives:
+
+```bash
+uv run python scripts/evaluate_candidate_recall.py \
+  --cases /private/callrhino/long-meetings.json \
+  --output /private/callrhino/results/candidate-retention.json \
+  --require-gate
+```
+
+The final release check also requires a frozen holdout and consented real
+meetings:
+
+```bash
+uv run python scripts/check_release_gates.py \
+  --holdout-report /private/callrhino/results/holdout-score.json \
+  --real-meeting-report /private/callrhino/results/real-meeting-score.json
+```
+
+That command represents candidate gating disabled. To evaluate an enabled
+candidate gate, add:
+
+```text
+--candidate-gating-enabled
+--candidate-report /private/callrhino/results/candidate-retention.json
+```
+
+Track private annotation coverage without provider calls:
+
+```bash
+uv run python scripts/check_annotation_coverage.py \
+  --plan evals/annotation-plan.template.json \
+  --root data/annotations \
+  --require-complete
+```
+
 ## Validation gates
 
 The current beta minimums remain useful for finding regressions:

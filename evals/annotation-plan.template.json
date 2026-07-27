@@ -1,0 +1,50 @@
+{
+  "version": "private-beta-v1",
+  "minimum_adjudicated_meetings": 60,
+  "minimum_expected_decisions": 600,
+  "minimum_expected_actions": 600,
+  "quotas": [
+    {
+      "id": "indian_english",
+      "label": "Indian English",
+      "required_tags": ["indian-english"],
+      "target_adjudicated_meetings": 15
+    },
+    {
+      "id": "hinglish",
+      "label": "Hindi-English code-mixed",
+      "required_tags": ["hinglish"],
+      "target_adjudicated_meetings": 15
+    },
+    {
+      "id": "tamil_english",
+      "label": "Tamil-English code-mixed",
+      "required_tags": ["tamil-english"],
+      "target_adjudicated_meetings": 8
+    },
+    {
+      "id": "telugu_english",
+      "label": "Telugu-English code-mixed",
+      "required_tags": ["telugu-english"],
+      "target_adjudicated_meetings": 8
+    },
+    {
+      "id": "noisy_call",
+      "label": "Noisy call",
+      "required_tags": ["noisy-call"],
+      "target_adjudicated_meetings": 10
+    },
+    {
+      "id": "overlapping_speakers",
+      "label": "Overlapping speakers",
+      "required_tags": ["overlapping-speakers"],
+      "target_adjudicated_meetings": 10
+    },
+    {
+      "id": "speaker_label_failure",
+      "label": "Missing or incorrect speaker labels",
+      "required_tags": ["speaker-label-failure"],
+      "target_adjudicated_meetings": 8
+    }
+  ]
+}
