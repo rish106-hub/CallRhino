@@ -4,7 +4,8 @@ CallRhino turns meeting transcripts into a reviewed record of decisions, action
 items, owners, deadlines, open questions, and risks.
 
 The product does not silently treat model output as fact. Every brief must be
-reviewed before it enters the meeting-series register.
+reviewed before it enters the meeting-series register. Transcripts are also
+reviewed before extraction starts.
 
 ## Current scope
 
@@ -12,7 +13,8 @@ The first vertical slice includes:
 
 - pasted, text-file, and long-form audio inputs
 - Sarvam Saaras v3 code-mix transcription with speaker diarization
-- speaker-aware transcript segmentation
+- an editable transcript review stage before extraction
+- deterministic speaker renaming and mapping on parsed transcript segments
 - Sarvam Chat Completions with strict JSON Schema output
 - evidence validation against stable transcript segment IDs
 - explicit decision, commitment, ownership, and deadline provenance
@@ -25,6 +27,19 @@ The first vertical slice includes:
 Raw audio is held only in a local temporary folder while Sarvam processes it.
 The application persists the transcript, not the audio file. Cross-meeting
 reconciliation remains a later increment.
+
+## Staged review flow
+
+1. Paste a transcript, upload a text file, or upload meeting audio.
+2. CallRhino creates a pending transcript. It does not start brief extraction.
+3. Edit the transcript and review the detected speaker labels.
+4. Rename speakers or map several labels to the same person.
+5. Confirm the transcript to start `MeetingExtractor`.
+6. Review the extracted brief before saving it to the register.
+
+Speaker mapping changes only the parsed speaker label. It preserves segment IDs,
+order, timestamps, and spoken text. For audio uploads, the raw file is still
+deleted with the local temporary folder immediately after transcription.
 
 ## Run locally
 
@@ -59,6 +74,10 @@ uv run streamlit run app.py
 
 The local application stores approved meetings in `data/callrhino.db`.
 
+The accuracy target and required validation set are defined in
+[`docs/accuracy-target.md`](docs/accuracy-target.md). The current synthetic
+benchmark is not evidence of 99.5% production accuracy.
+
 ## Verify
 
 ```bash
@@ -81,7 +100,8 @@ src/callrhino/
 │   ├── exports.py
 │   ├── extraction.py
 │   ├── prompts.py
-│   └── sarvam.py
+│   ├── sarvam.py
+│   └── transcript_review.py
 └── ui/
     ├── components.py
     └── styles.py

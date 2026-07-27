@@ -1,17 +1,22 @@
 from datetime import date
+from hashlib import sha256
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
 import streamlit as st
 
 from callrhino.config import Settings, get_settings
-from callrhino.domain.models import MeetingBrief, TranscriptSegment
-from callrhino.domain.transcript import segment_transcript
+from callrhino.domain.models import MeetingBrief, PendingTranscript, TranscriptSegment
+from callrhino.domain.transcript import detected_speaker_labels, segment_transcript
 from callrhino.repositories.sqlite import SQLiteMeetingRepository
 from callrhino.services.exports import brief_to_json, brief_to_markdown
 from callrhino.services.extraction import BriefValidationError, MeetingExtractor
 from callrhino.services.sarvam import SarvamChatClient, SarvamError
 from callrhino.services.speech import SarvamSpeechClient
+from callrhino.services.transcript_review import (
+    confirm_transcript_review,
+    create_pending_transcript,
+)
 from callrhino.ui.components import render_page_intro, render_review_form
 from callrhino.ui.styles import apply_styles
 
@@ -79,12 +84,15 @@ def render_new_meeting(repository: SQLiteMeetingRepository) -> None:
     render_page_intro(
         "01 / Process",
         "Turn talk into a record.",
-        "Paste a transcript or upload meeting audio. CallRhino finds decisions, actions, "
-        "missing owners, deadlines, and unresolved questions. You approve before saving.",
+        "Paste a transcript or upload meeting audio. Review the transcript and speakers "
+        "before CallRhino extracts a meeting brief.",
     )
 
     if "draft_brief" in st.session_state:
         render_current_draft(repository)
+        return
+    if "pending_transcript" in st.session_state:
+        render_pending_transcript()
         return
 
     if st.button("Use sample transcript"):
@@ -144,7 +152,7 @@ def render_new_meeting(repository: SQLiteMeetingRepository) -> None:
                 "local temporary folder immediately after processing."
             )
         submitted = st.form_submit_button(
-            "Create meeting brief",
+            "Review transcript",
             type="primary",
             use_container_width=True,
         )
@@ -188,40 +196,127 @@ def render_new_meeting(repository: SQLiteMeetingRepository) -> None:
     except SarvamError as exc:
         st.error(str(exc))
         return
-    if len(transcript.strip()) < 80:
-        st.error("The transcript is too short to process.")
+
+    try:
+        pending = create_pending_transcript(
+            series_name=series_name,
+            meeting_title=meeting_title,
+            meeting_date=meeting_date,
+            source_type=source_type,
+            transcript_text=transcript,
+        )
+    except ValueError as exc:
+        st.error(str(exc))
+        return
+
+    clear_pending_transcript()
+    st.session_state.pending_transcript = pending
+    st.session_state.pending_review_text = pending.transcript_text
+    st.rerun()
+
+
+def render_pending_transcript() -> None:
+    pending: PendingTranscript = st.session_state.pending_transcript
+
+    st.subheader("Review transcript before extraction")
+    st.caption(
+        "Extraction has not started. Edit the transcript and confirm the speaker names first."
+    )
+
+    controls = st.columns([1, 3])
+    if controls[0].button("Discard transcript"):
+        clear_pending_transcript()
+        st.rerun()
+    controls[1].caption(
+        f"{pending.series_name} | {pending.meeting_title} | "
+        f"{pending.meeting_date.isoformat()} | Source: {pending.source_type}"
+    )
+
+    reviewed_text = st.text_area(
+        "Transcript",
+        key="pending_review_text",
+        height=390,
+        help="Edits made here are used for extraction after confirmation.",
+    )
+
+    try:
+        current_segments = segment_transcript(reviewed_text)
+    except ValueError as exc:
+        st.error(str(exc))
+        current_segments = []
+
+    speaker_labels = detected_speaker_labels(current_segments)
+    st.markdown("### Detected speakers")
+    if speaker_labels:
+        st.caption("Rename a label or map several labels to the same person.")
+    else:
+        st.info("No speaker labels detected. Use lines such as `Aditi: Update text`.")
+
+    speaker_mapping: dict[str, str] = {}
+    for label in speaker_labels:
+        widget_key = _speaker_widget_key(label)
+        if widget_key not in st.session_state:
+            st.session_state[widget_key] = label
+        speaker_mapping[label] = st.text_input(
+            f'Rename "{label}"',
+            key=widget_key,
+        )
+
+    confirmed = st.button(
+        "Confirm transcript and extract brief",
+        type="primary",
+        use_container_width=True,
+    )
+    if not confirmed:
         return
 
     try:
-        segments = segment_transcript(transcript)
+        reviewed = confirm_transcript_review(
+            pending,
+            transcript_text=reviewed_text,
+            speaker_mapping=speaker_mapping,
+        )
         settings = get_settings()
         with (
             st.spinner("Reading commitments, decisions, and loose ends..."),
             SarvamChatClient(settings) as client,
         ):
             result = MeetingExtractor(client).extract(
-                meeting_date=meeting_date,
-                series_name=series_name.strip(),
-                meeting_title=meeting_title.strip(),
-                segments=segments,
+                meeting_date=reviewed.meeting_date,
+                series_name=reviewed.series_name,
+                meeting_title=reviewed.meeting_title,
+                segments=reviewed.segments,
             )
     except (ValueError, SarvamError, BriefValidationError) as exc:
         st.error(str(exc))
         return
 
     st.session_state.draft_brief = result.brief
-    st.session_state.draft_segments = segments
+    st.session_state.draft_segments = reviewed.segments
     st.session_state.draft_context = {
-        "series_name": series_name.strip(),
-        "meeting_title": meeting_title.strip(),
-        "meeting_date": meeting_date,
-        "transcript": transcript,
-        "source_type": source_type,
+        "series_name": reviewed.series_name,
+        "meeting_title": reviewed.meeting_title,
+        "meeting_date": reviewed.meeting_date,
+        "transcript": reviewed.transcript_text,
+        "source_type": reviewed.source_type,
         "model": result.model,
         "tokens": result.usage.total_tokens,
         "repaired": result.repaired,
     }
+    clear_pending_transcript()
     st.rerun()
+
+
+def _speaker_widget_key(label: str) -> str:
+    label_digest = sha256(label.encode("utf-8")).hexdigest()[:12]
+    return f"pending_speaker_{label_digest}"
+
+
+def clear_pending_transcript() -> None:
+    st.session_state.pop("pending_transcript", None)
+    for key in list(st.session_state):
+        if key == "pending_review_text" or key.startswith("pending_speaker_"):
+            st.session_state.pop(key, None)
 
 
 def render_current_draft(repository: SQLiteMeetingRepository) -> None:
