@@ -73,3 +73,54 @@ def valid_brief_data() -> dict:
 @pytest.fixture
 def valid_brief(valid_brief_data: dict) -> MeetingBrief:
     return MeetingBrief.model_validate(valid_brief_data)
+
+
+@pytest.fixture
+def valid_compact_data() -> dict:
+    return {
+        "schema_version": "compact-1",
+        "summary": "The team moved the release and assigned the upload fix.",
+        "topics": ["release", "onboarding"],
+        "facts": [
+            {
+                "kind": "decision",
+                "text": "Move the beta release to 14 August.",
+                "state": "confirmed",
+                "actor_text": "Product team",
+                "actor_basis": "group",
+                "suggested_actor_text": None,
+                "date_text": None,
+                "evidence_segment_ids": ["seg_0003"],
+            },
+            {
+                "kind": "action",
+                "text": "Fix the upload timeout and open a pull request.",
+                "state": "committed",
+                "actor_text": "Rohan",
+                "actor_basis": "self_commitment",
+                "suggested_actor_text": None,
+                "date_text": "Wednesday",
+                "evidence_segment_ids": ["seg_0007"],
+            },
+            {
+                "kind": "question",
+                "text": "Can Vikram provide the file set by Tuesday?",
+                "state": "open",
+                "actor_text": None,
+                "actor_basis": "unassigned",
+                "suggested_actor_text": None,
+                "date_text": None,
+                "evidence_segment_ids": ["seg_0012"],
+            },
+            {
+                "kind": "risk",
+                "text": "The release depends on receiving the test file set.",
+                "state": "dependency",
+                "actor_text": None,
+                "actor_basis": "unassigned",
+                "suggested_actor_text": None,
+                "date_text": None,
+                "evidence_segment_ids": ["seg_0012"],
+            },
+        ],
+    }

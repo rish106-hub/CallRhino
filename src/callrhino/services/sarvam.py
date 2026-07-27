@@ -71,7 +71,7 @@ class SarvamChatClient:
             "messages": messages,
             "temperature": 0,
             "reasoning_effort": None,
-            "max_tokens": 4096,
+            "max_tokens": self._settings.sarvam_max_output_tokens,
             "n": 1,
             "stream": False,
             "response_format": {

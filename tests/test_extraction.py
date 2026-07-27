@@ -19,129 +19,127 @@ class FakeGenerator:
             content=json.dumps(data),
             data=data,
             usage=TokenUsage(prompt_tokens=100, completion_tokens=50, total_tokens=150),
-            model="sarvam-30b",
+            model="sarvam-105b",
             request_id="chat_test",
         )
 
 
-def test_extracts_and_validates_brief(valid_brief_data: dict) -> None:
-    generator = FakeGenerator([valid_brief_data])
-    extractor = MeetingExtractor(generator)
-    segments = segment_transcript(
-        "\n".join(f"Speaker: Segment {index}" for index in range(1, 13))
-    )
-
-    result = extractor.extract(
-        meeting_date=date(2026, 7, 27),
-        series_name="Weekly Product Review",
-        meeting_title="Launch review",
-        segments=segments,
-    )
-
-    assert result.brief.action_items[0].owner_text == "Rohan"
-    assert result.brief.action_items[0].owner_basis.value == "self_commitment"
-    assert result.usage.total_tokens == 150
-    assert result.repaired is False
-    assert len(generator.calls) == 1
+def _segments() -> list:
+    lines = [f"Speaker: Segment {index}" for index in range(1, 13)]
+    lines[6] = "Rohan: I will fix the upload timeout by Wednesday."
+    return segment_transcript("\n".join(lines))
 
 
-def test_repairs_unknown_evidence_once(valid_brief_data: dict) -> None:
-    invalid = deepcopy(valid_brief_data)
-    invalid["decisions"][0]["evidence_segment_ids"] = ["seg_9999"]
-    generator = FakeGenerator([invalid, valid_brief_data])
-    extractor = MeetingExtractor(generator)
-    segments = segment_transcript(
-        "\n".join(f"Speaker: Segment {index}" for index in range(1, 13))
-    )
-
-    result = extractor.extract(
-        meeting_date=date(2026, 7, 27),
-        series_name="Weekly Product Review",
-        meeting_title="Launch review",
-        segments=segments,
-    )
-
-    assert result.repaired is True
-    assert result.usage.total_tokens == 300
-    assert len(generator.calls) == 2
-    repair_messages = generator.calls[1]["messages"]
-    assert "Unknown evidence segment IDs" in repair_messages[-1]["content"]
-
-
-def test_repairs_model_generated_reviewer_provenance(valid_brief_data: dict) -> None:
-    invalid = deepcopy(valid_brief_data)
-    invalid["action_items"][0]["owner_basis"] = "reviewer_confirmed"
-    generator = FakeGenerator([invalid, valid_brief_data])
-    extractor = MeetingExtractor(generator)
-    segments = segment_transcript(
-        "\n".join(f"Speaker: Segment {index}" for index in range(1, 13))
-    )
-
-    result = extractor.extract(
-        meeting_date=date(2026, 7, 27),
-        series_name="Weekly Product Review",
-        meeting_title="Launch review",
-        segments=segments,
-    )
-
-    assert result.repaired is True
-    repair_messages = generator.calls[1]["messages"]
-    assert "reviewer_confirmed action ownership" in repair_messages[-1]["content"]
-
-
-def test_normalizes_missing_contract_warnings_without_paid_repair(
-    valid_brief_data: dict,
+def test_compiles_compact_extraction_into_canonical_brief(
+    valid_compact_data: dict,
 ) -> None:
-    mechanical_error = deepcopy(valid_brief_data)
-    action = mechanical_error["action_items"][0]
-    action.update(
-        {
-            "owner_text": None,
-            "owner_basis": "unassigned",
-            "suggested_owner_text": "Rohan",
-            "due_date": None,
-            "due_text": None,
-            "deadline_precision": "absent",
-            "warnings": [],
-        }
-    )
-    generator = FakeGenerator([mechanical_error])
-    segments = segment_transcript(
-        "\n".join(f"Speaker: Segment {index}" for index in range(1, 13))
-    )
+    generator = FakeGenerator([valid_compact_data])
 
     result = MeetingExtractor(generator).extract(
         meeting_date=date(2026, 7, 27),
         series_name="Weekly Product Review",
         meeting_title="Launch review",
-        segments=segments,
+        segments=_segments(),
+    )
+
+    action = result.brief.action_items[0]
+    assert action.owner_text == "Rohan"
+    assert action.owner_basis.value == "self_commitment"
+    assert action.due_date == date(2026, 7, 29)
+    assert action.deadline_precision.value == "resolved_relative"
+    assert result.usage.total_tokens == 150
+    assert result.repaired is False
+    assert generator.calls[0]["schema_name"] == "compact_meeting_facts"
+
+
+def test_repairs_unknown_evidence_once(valid_compact_data: dict) -> None:
+    invalid = deepcopy(valid_compact_data)
+    invalid["facts"][0]["evidence_segment_ids"] = ["seg_9999"]
+    generator = FakeGenerator([invalid, valid_compact_data])
+
+    result = MeetingExtractor(generator).extract(
+        meeting_date=date(2026, 7, 27),
+        series_name="Weekly Product Review",
+        meeting_title="Launch review",
+        segments=_segments(),
+    )
+
+    assert result.repaired is True
+    assert result.usage.total_tokens == 300
+    assert len(generator.calls) == 2
+    assert "Unknown evidence segment IDs" in generator.calls[1]["messages"][-1]["content"]
+
+
+def test_repairs_incompatible_fact_state(valid_compact_data: dict) -> None:
+    invalid = deepcopy(valid_compact_data)
+    invalid["facts"][0]["state"] = "committed"
+    generator = FakeGenerator([invalid, valid_compact_data])
+
+    result = MeetingExtractor(generator).extract(
+        meeting_date=date(2026, 7, 27),
+        series_name="Weekly Product Review",
+        meeting_title="Launch review",
+        segments=_segments(),
+    )
+
+    assert result.repaired is True
+    assert "not valid for" in generator.calls[1]["messages"][-1]["content"]
+
+
+def test_compiler_adds_missing_contract_fields_without_paid_repair(
+    valid_compact_data: dict,
+) -> None:
+    compact = deepcopy(valid_compact_data)
+    action = compact["facts"][1]
+    action.update(
+        {
+            "state": "requested",
+            "actor_text": None,
+            "actor_basis": "unassigned",
+            "suggested_actor_text": "Rohan",
+            "date_text": None,
+            "evidence_segment_ids": ["seg_0008"],
+        }
+    )
+    generator = FakeGenerator([compact])
+
+    result = MeetingExtractor(generator).extract(
+        meeting_date=date(2026, 7, 27),
+        series_name="Weekly Product Review",
+        meeting_title="Launch review",
+        segments=_segments(),
     )
 
     assert result.repaired is False
     assert len(generator.calls) == 1
-    warning_values = {warning.value for warning in result.brief.action_items[0].warnings}
-    assert warning_values == {
+    item = result.brief.action_items[0]
+    assert item.owner_text is None
+    assert item.deadline_precision.value == "absent"
+    assert {warning.value for warning in item.warnings} == {
         "MISSING_OWNER",
         "UNACCEPTED_ASSIGNMENT",
         "MISSING_DEADLINE",
     }
 
 
-def test_repairs_generic_group_owner(valid_brief_data: dict) -> None:
-    invalid = deepcopy(valid_brief_data)
-    invalid["action_items"][0]["owner_text"] = "We"
-    invalid["action_items"][0]["owner_basis"] = "group_commitment"
-    generator = FakeGenerator([invalid, valid_brief_data])
-    segments = segment_transcript(
-        "\n".join(f"Speaker: Segment {index}" for index in range(1, 13))
-    )
+def test_generic_group_actor_fails_safe_without_repair(valid_compact_data: dict) -> None:
+    compact = deepcopy(valid_compact_data)
+    compact["facts"][1]["actor_text"] = "We"
+    compact["facts"][1]["actor_basis"] = "group_commitment"
+    generator = FakeGenerator([compact])
 
     result = MeetingExtractor(generator).extract(
         meeting_date=date(2026, 7, 27),
         series_name="Weekly Product Review",
         meeting_title="Launch review",
-        segments=segments,
+        segments=_segments(),
     )
 
-    assert result.repaired is True
-    assert "grounded group" in generator.calls[1]["messages"][-1]["content"]
+    item = result.brief.action_items[0]
+    assert result.repaired is False
+    assert item.owner_text is None
+    assert item.owner_basis.value == "unassigned"
+    assert {warning.value for warning in item.warnings} >= {
+        "MISSING_OWNER",
+        "UNCLEAR_SPEAKER",
+    }

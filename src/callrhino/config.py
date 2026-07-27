@@ -18,6 +18,12 @@ class Settings(BaseSettings):
 
     sarvam_api_key: str | None = Field(default=None, alias="SARVAM_API_KEY")
     sarvam_chat_model: str = Field(default="sarvam-105b", alias="SARVAM_CHAT_MODEL")
+    sarvam_max_output_tokens: int = Field(
+        default=2048,
+        ge=512,
+        le=4096,
+        alias="SARVAM_MAX_OUTPUT_TOKENS",
+    )
     sarvam_base_url: str = Field(
         default="https://api.sarvam.ai",
         alias="SARVAM_BASE_URL",
