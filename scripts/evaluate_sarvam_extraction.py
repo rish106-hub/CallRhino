@@ -4,7 +4,7 @@ import time
 from pathlib import Path
 
 from callrhino.config import Settings
-from callrhino.domain.models import MeetingBrief
+from callrhino.domain.compact import CompactExtraction
 from callrhino.domain.transcript import segment_transcript
 from callrhino.evaluation.extraction_metrics import (
     score_extraction_case,
@@ -16,8 +16,11 @@ from callrhino.evaluation.models import (
     ExtractionCaseManifest,
     ExtractionPrediction,
 )
+from callrhino.services.compact_prompts import (
+    COMPACT_EXTRACTION_PROMPT_VERSION,
+    build_compact_extraction_messages,
+)
 from callrhino.services.extraction import BriefValidationError, MeetingExtractor
-from callrhino.services.prompts import EXTRACTION_PROMPT_VERSION, build_extraction_messages
 from callrhino.services.sarvam import (
     SarvamChatClient,
     SarvamError,
@@ -28,7 +31,7 @@ MODEL_PRICING = {
     "sarvam-30b": (2.5, 10.0),
     "sarvam-105b": (4.0, 16.0),
 }
-MAX_OUTPUT_TOKENS_PER_ATTEMPT = 4096
+MAX_OUTPUT_TOKENS_PER_ATTEMPT = 2048
 
 
 def main() -> None:
@@ -140,7 +143,7 @@ def main() -> None:
     output = {
         "provider": "sarvam",
         "model": settings.sarvam_chat_model,
-        "prompt_version": EXTRACTION_PROMPT_VERSION,
+        "prompt_version": COMPACT_EXTRACTION_PROMPT_VERSION,
         "conservative_cost_ceiling_inr": estimated_ceiling,
         "actual_total_cost_inr": running_cost,
         "summary": summarize_extraction(scores),
@@ -156,7 +159,7 @@ def _case_cost_ceiling(
     pricing: tuple[float, float],
 ) -> float:
     segments = segment_transcript(case.transcript)
-    messages = build_extraction_messages(
+    messages = build_compact_extraction_messages(
         meeting_date=case.meeting_date,
         series_name="CallRhino evaluation",
         meeting_title=case.title,
@@ -164,7 +167,7 @@ def _case_cost_ceiling(
         segments=segments,
     )
     prompt_chars = len(json.dumps(messages, ensure_ascii=False))
-    schema_chars = len(json.dumps(MeetingBrief.model_json_schema(), ensure_ascii=False))
+    schema_chars = len(json.dumps(CompactExtraction.model_json_schema(), ensure_ascii=False))
     estimated_input_tokens = (prompt_chars + schema_chars) / 4
     attempts = 2
     input_price, output_price = pricing

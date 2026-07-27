@@ -90,6 +90,14 @@ src/callrhino/
 The domain package has no Streamlit, Sarvam, or database dependency. Provider
 and persistence adapters can be changed without rewriting the extraction rules.
 
+## Experimental compact extractor
+
+The `codex/compact-extraction-cost` branch asks the model for a small semantic
+fact list and compiles the canonical meeting record locally. This reduces the
+combined prompt and schema payload by 71.3% and roughly halves observed cost,
+but the current benchmark loses too much action precision. It is not merge-ready.
+See [`docs/compact-extraction-experiment.md`](docs/compact-extraction-experiment.md).
+
 ## Sarvam integration
 
 CallRhino uses the documented Chat Completions endpoint:

@@ -36,3 +36,8 @@ def test_openai_soft_budget_cannot_exceed_hard_budget() -> None:
             OPENAI_HARD_BUDGET_USD="1.25",
             _env_file=None,
         )
+
+
+def test_sarvam_output_cap_cannot_exceed_provider_guardrail() -> None:
+    with pytest.raises(ValidationError):
+        Settings(SARVAM_MAX_OUTPUT_TOKENS=4097, _env_file=None)

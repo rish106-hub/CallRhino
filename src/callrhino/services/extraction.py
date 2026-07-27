@@ -4,6 +4,7 @@ from typing import Protocol
 
 from pydantic import ValidationError
 
+from callrhino.domain.compact import CompactExtraction
 from callrhino.domain.models import (
     DecisionMakerBasis,
     MeetingBrief,
@@ -11,8 +12,11 @@ from callrhino.domain.models import (
     TranscriptSegment,
     WarningCode,
 )
-from callrhino.services.normalization import normalize_brief_payload
-from callrhino.services.prompts import build_extraction_messages, build_repair_messages
+from callrhino.services.compact_prompts import (
+    build_compact_extraction_messages,
+    build_compact_repair_messages,
+)
+from callrhino.services.compiler import CompactCompilationError, compile_meeting_brief
 from callrhino.services.sarvam import StructuredChatResult, TokenUsage
 
 
@@ -61,7 +65,7 @@ class MeetingExtractor:
         workspace_roster: dict[str, str] | None = None,
         workspace_glossary: dict[str, str] | None = None,
     ) -> ExtractionResult:
-        messages = build_extraction_messages(
+        messages = build_compact_extraction_messages(
             meeting_date=meeting_date,
             series_name=series_name,
             meeting_title=meeting_title,
@@ -72,26 +76,27 @@ class MeetingExtractor:
             workspace_roster=workspace_roster,
             workspace_glossary=workspace_glossary,
         )
-        schema = MeetingBrief.model_json_schema()
+        schema = CompactExtraction.model_json_schema()
         valid_ids = {segment.id for segment in segments}
 
         result = self._generator.generate_structured(
             messages=messages,
-            schema_name="meeting_brief",
+            schema_name="compact_meeting_facts",
             schema=schema,
         )
         total_usage = result.usage
 
         for attempt in range(self._max_repairs + 1):
             try:
-                normalized_data = normalize_brief_payload(
-                    result.data,
+                compact = CompactExtraction.model_validate(result.data)
+                brief = compile_meeting_brief(
+                    compact,
                     meeting_date=meeting_date,
+                    meeting_title=meeting_title,
                     timezone=timezone,
                     output_language=output_language,
                     segments=segments,
                 )
-                brief = MeetingBrief.model_validate(normalized_data)
                 _validate_evidence(brief, valid_ids)
                 _validate_extraction_provenance(brief)
                 _validate_meeting_context(
@@ -107,16 +112,20 @@ class MeetingExtractor:
                     request_id=result.request_id,
                     repaired=attempt > 0,
                 )
-            except (ValidationError, BriefValidationError) as exc:
+            except (ValidationError, BriefValidationError, CompactCompilationError) as exc:
                 if attempt >= self._max_repairs:
                     raise BriefValidationError(
                         f"Meeting brief failed validation after {attempt + 1} attempts: {exc}",
                         usage=total_usage,
                     ) from exc
-                messages = build_repair_messages(messages, result.content, str(exc))
+                messages = build_compact_repair_messages(
+                    messages,
+                    result.content,
+                    str(exc),
+                )
                 result = self._generator.generate_structured(
                     messages=messages,
-                    schema_name="meeting_brief",
+                    schema_name="compact_meeting_facts",
                     schema=schema,
                 )
                 total_usage = _add_usage(total_usage, result.usage)
