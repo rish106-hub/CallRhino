@@ -1,0 +1,13 @@
+[00:00] Aditi: Quick launch review. The onboarding upload still fails for larger files.
+[00:14] Rohan: I reproduced it this morning. The API times out after thirty seconds.
+[00:26] Aditi: We cannot launch on Friday with that issue open. Let's move the beta release to 14 August.
+[00:41] Meera: Agreed. We should tell the pilot customers today.
+[00:50] Aditi: Meera, please send the updated release note to the pilot customers by 5 PM today.
+[01:03] Meera: I'll own that.
+[01:08] Rohan: I can fix the upload timeout and open a pull request by Wednesday.
+[01:18] Aditi: Good. Rohan owns the upload fix. Please add load-test results to the pull request.
+[01:31] Rohan: I can add them, but I need the production-like file set from DevOps.
+[01:42] Aditi: Who can get that file set?
+[01:47] Meera: I am not sure. Let's confirm with Vikram after this call.
+[01:58] Aditi: Then the open question is whether Vikram can provide the file set by Tuesday. The release depends on it.
+
