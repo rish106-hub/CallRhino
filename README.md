@@ -74,6 +74,15 @@ uv run streamlit run app.py
 
 The local application stores approved meetings in `data/callrhino.db`.
 
+The private annotation workflow is a separate local app:
+
+```bash
+uv run streamlit run annotation_app.py
+```
+
+It stores consented, redacted annotation records under `data/annotations/`,
+which is ignored by Git. Do not deploy the annotation app publicly.
+
 The accuracy target and required validation set are defined in
 [`docs/accuracy-target.md`](docs/accuracy-target.md). The current synthetic
 benchmark is not evidence of 99.5% production accuracy.

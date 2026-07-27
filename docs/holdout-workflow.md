@@ -41,13 +41,26 @@ all model-visible case fields.
 
 ## 3. Run extraction
 
-Run the extractor only with `holdout-input.json`. Store predictions in this
-shape:
+Run the extractor only with `holdout-input.json`. The capped Sarvam runner never
+loads the private gold package:
+
+```bash
+uv run python scripts/run_sarvam_holdout.py \
+  --public-package /private/callrhino/run/holdout-input.json \
+  --model sarvam-105b \
+  --max-cost-inr 10 \
+  --output /private/callrhino/run/predictions.json
+```
+
+The prediction package uses this shape:
 
 ```json
 {
   "format_version": "1.0",
   "package_id": "holdout_...",
+  "strategy": "canonical",
+  "prompt_version": "extract-v2.3",
+  "actual_total_cost_inr": 0.1,
   "predictions": [
     {
       "case_id": "meeting_001",
@@ -69,6 +82,11 @@ shape:
   ]
 }
 ```
+
+Before opening a provider connection, the runner reserves a deliberately high
+cost ceiling. It treats every UTF-8 input byte as a possible token and reserves
+two complete 4,096-token outputs. If that ceiling exceeds `--max-cost-inr`, it
+exits without making a Sarvam request.
 
 There must be exactly one prediction for every public case. Copy the package ID
 and input fingerprints. Do not recalculate or omit them.

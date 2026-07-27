@@ -113,7 +113,16 @@ def _check_candidate_report(
     evaluated_cases = report.get("case_count")
     if not isinstance(evaluated_cases, int) or evaluated_cases <= 0:
         failures.append("candidate gating: at least one long meeting is required")
-    if report.get("gold_evidence_retention") != 1:
+    if _retention_ratio(report.get("gold_evidence_retention")) != 1:
         failures.append("candidate gating: gold evidence retention must be 100%")
-    if report.get("case_all_evidence_retention") != 1:
+    if _retention_ratio(report.get("case_all_evidence_retention")) != 1:
         failures.append("candidate gating: every case must retain all gold evidence")
+
+
+def _retention_ratio(value: Any) -> int | float | None:
+    if isinstance(value, int | float):
+        return value
+    if isinstance(value, dict):
+        ratio = value.get("ratio")
+        return ratio if isinstance(ratio, int | float) else None
+    return None

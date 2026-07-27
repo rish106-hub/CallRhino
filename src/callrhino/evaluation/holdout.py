@@ -17,6 +17,7 @@ from callrhino.evaluation.models import (
     ExtractionPrediction,
 )
 from callrhino.evaluation.text_metrics import normalize_text
+from callrhino.services.prompts import EXTRACTION_PROMPT_VERSION
 
 HOLDOUT_FORMAT_VERSION = "1.0"
 _FINGERPRINT_LENGTH = 64
@@ -85,6 +86,9 @@ class HoldoutPrediction(ExtractionPrediction):
 class HoldoutPredictionPackage(EvalModel):
     format_version: Literal["1.0"] = HOLDOUT_FORMAT_VERSION
     package_id: str
+    strategy: Literal["canonical"] = "canonical"
+    prompt_version: str = EXTRACTION_PROMPT_VERSION
+    actual_total_cost_inr: float = Field(default=0, ge=0)
     predictions: list[HoldoutPrediction]
 
 

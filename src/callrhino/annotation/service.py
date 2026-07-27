@@ -17,6 +17,7 @@ from callrhino.evaluation.models import (
     ExpectedAction,
     ExpectedDecision,
     ExtractionCase,
+    ExtractionCaseManifest,
 )
 
 
@@ -99,6 +100,22 @@ class AnnotationService:
 
     def get(self, meeting_id: str) -> AnnotationRecord:
         return self._repository.get(meeting_id)
+
+    def list_records(self) -> list[AnnotationRecord]:
+        return self._repository.list_records()
+
+    def withdraw_consent(self, meeting_id: str) -> None:
+        self._repository.delete(meeting_id)
+
+    def export_adjudicated_manifest(self) -> ExtractionCaseManifest:
+        records = self._repository.list_records()
+        cases = [
+            record.adjudication.extraction_case
+            for record in records
+            if record.source.consent_status == ConsentStatus.GRANTED
+            and record.adjudication is not None
+        ]
+        return ExtractionCaseManifest(version="1.0", cases=cases)
 
     @staticmethod
     def _ensure_annotation_allowed(source: SourceMeeting) -> None:

@@ -322,3 +322,35 @@ def test_failed_atomic_replace_preserves_previous_record(
 
     assert record_path.read_text(encoding="utf-8") == original
     assert not list((tmp_path / "annotations").glob("*.tmp"))
+
+
+def test_withdrawing_consent_deletes_stored_transcript(
+    service: AnnotationService,
+    tmp_path: Path,
+) -> None:
+    service.register_meeting(_source())
+    record_path = tmp_path / "annotations" / "consented_meeting_001.json"
+
+    service.withdraw_consent("consented_meeting_001")
+
+    assert not record_path.exists()
+    assert service.list_records() == []
+
+
+def test_exports_only_adjudicated_consented_gold(
+    service: AnnotationService,
+) -> None:
+    service.register_meeting(_source())
+    service.register_meeting(_source(id="not_adjudicated"))
+    service.submit_review("consented_meeting_001", _submission("reviewer-1"))
+    service.submit_review("consented_meeting_001", _submission("reviewer-2"))
+    service.adjudicate(
+        "consented_meeting_001",
+        adjudicator_id="lead-reviewer",
+        decisions=[_decision()],
+        actions=[_action()],
+    )
+
+    manifest = service.export_adjudicated_manifest()
+
+    assert [case.id for case in manifest.cases] == ["consented_meeting_001"]

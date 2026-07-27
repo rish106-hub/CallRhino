@@ -76,6 +76,29 @@ def test_candidate_gating_requires_perfect_long_meeting_retention() -> None:
     assert any("gold evidence retention must be 100%" in item for item in result.failures)
 
 
+def test_candidate_gating_accepts_long_meeting_report_shape() -> None:
+    result = evaluate_release_readiness(
+        holdout_summary=_summary(cases=50),
+        real_meeting_summary=_summary(cases=20),
+        candidate_gating_enabled=True,
+        candidate_report={
+            "case_count": 20,
+            "gold_evidence_retention": {
+                "retained": 200,
+                "gold": 200,
+                "ratio": 1.0,
+            },
+            "case_all_evidence_retention": {
+                "retained": 20,
+                "gold": 20,
+                "ratio": 1.0,
+            },
+        },
+    )
+
+    assert result.ready is True
+
+
 def test_missing_micro_metrics_cannot_pass() -> None:
     result = evaluate_release_readiness(
         holdout_summary={

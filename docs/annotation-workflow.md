@@ -17,8 +17,16 @@ contains:
 
 Registration requires active consent. PII review must be complete. If PII was
 found, the stored transcript must already be redacted and redaction must be
-marked complete. Withdrawing consent means the private record must be removed
-under the team's data-deletion process before any later benchmark run.
+marked complete. Withdrawing consent through the annotation app deletes the
+private JSON record and its stored transcript before any later benchmark run.
+
+Start the private local interface with:
+
+```bash
+uv run streamlit run annotation_app.py
+```
+
+Do not deploy this interface publicly.
 
 ## Segment preparation
 
@@ -71,6 +79,5 @@ Per-meeting file locks prevent two local processes from overwriting each
 other's submissions.
 
 Atomic replacement protects against partial JSON. It does not provide encrypted
-storage, access control, backups, or consent-deletion automation. The private
-annotation directory still needs restricted filesystem permissions and an
-explicit retention policy.
+storage, user authentication, or backups. The private annotation directory still
+needs restricted filesystem permissions and an explicit retention policy.

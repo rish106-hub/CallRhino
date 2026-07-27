@@ -61,6 +61,26 @@ class JsonAnnotationRepository:
             raise AnnotationNotFoundError(f'annotation meeting "{meeting_id}" was not found')
         return AnnotationRecord.model_validate_json(path.read_text(encoding="utf-8"))
 
+    def list_records(self) -> list[AnnotationRecord]:
+        return [
+            AnnotationRecord.model_validate_json(path.read_text(encoding="utf-8"))
+            for path in sorted(self._root.glob("*.json"))
+        ]
+
+    def delete(self, meeting_id: str) -> None:
+        with self._meeting_lock(meeting_id):
+            path = self._record_path(meeting_id)
+            if not path.exists():
+                raise AnnotationNotFoundError(
+                    f'annotation meeting "{meeting_id}" was not found'
+                )
+            path.unlink()
+            directory_fd = os.open(path.parent, os.O_RDONLY)
+            try:
+                os.fsync(directory_fd)
+            finally:
+                os.close(directory_fd)
+
     def add_submission(
         self,
         meeting_id: str,
